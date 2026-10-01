@@ -1,0 +1,20 @@
+# Environment files containing secrets
+.env
+backend/.env
+*.env
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Output exports
+backend/exports/
+exports/
+*.xlsx
+
+# Vercel build output
+.vercel/

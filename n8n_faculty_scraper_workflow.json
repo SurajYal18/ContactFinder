@@ -1,0 +1,602 @@
+{
+  "id": "j9HUNQNBJ2EAyyKX",
+  "name": "Contact Finder",
+  "active": true,
+  "isArchived": false,
+  "versionId": "3daf3ca4-ad39-4aba-8a96-3ff2c5828f2a",
+  "activeVersionId": "3daf3ca4-ad39-4aba-8a96-3ff2c5828f2a",
+  "triggerCount": 1,
+  "nodeCount": 15,
+  "createdAt": "2026-09-30T14:49:38.950Z",
+  "updatedAt": "2026-10-01T08:13:59.129Z",
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "tags": [],
+  "parentFolderId": null,
+  "scopes": [
+    "execution:delete",
+    "execution:list",
+    "execution:read",
+    "execution:reveal",
+    "workflow:create",
+    "workflow:delete",
+    "workflow:disableRedaction",
+    "workflow:enableRedaction",
+    "workflow:execute",
+    "workflow:execute-chat",
+    "workflow:export",
+    "workflow:import",
+    "workflow:list",
+    "workflow:move",
+    "workflow:publish",
+    "workflow:read",
+    "workflow:share",
+    "workflow:unpublish",
+    "workflow:unshare",
+    "workflow:update"
+  ],
+  "canExecute": true,
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Input URL List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input URL List": {
+      "main": [
+        [
+          {
+            "node": "Prepare Individual URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Form Submitted": {
+      "main": [
+        [
+          {
+            "node": "Prepare Individual URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Individual URLs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Website HTML (1 by 1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website HTML (1 by 1)": {
+      "main": [
+        [
+          {
+            "node": "Gemini 3.5 Flash Lite Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini 3.5 Flash Lite Extractor": {
+      "main": [
+        [
+          {
+            "node": "Contacts Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contacts Found?": {
+      "main": [
+        [
+          {
+            "node": "Needs Hunter.io?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show Status Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Hunter.io?": {
+      "main": [
+        [
+          {
+            "node": "1. Hunter.io Email Finder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Contacts",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "1. Hunter.io Email Finder": {
+      "main": [
+        [
+          {
+            "node": "Process Hunter Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Hunter Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Contacts": {
+      "main": [
+        [
+          {
+            "node": "Format & Reorder Columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format & Reorder Columns": {
+      "main": [
+        [
+          {
+            "node": "Generate Excel (.xlsx)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Excel (.xlsx)": {
+      "main": [
+        [
+          {
+            "node": "Download Excel Form Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ad61a1a0-1649-429e-b093-3c4ce9b366a8",
+      "name": "When clicking ‘Execute workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2688,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b8dd5341-2a1c-4395-8e7c-a492f25bfa17",
+              "name": "urls",
+              "type": "array",
+              "value": "=[\"https://www.georgiasouthern.edu/colleges/health-professions/departments/nursing/faculty-and-staff\"]"
+            },
+            {
+              "id": "cfg-gemini-key",
+              "name": "geminiApiKey",
+              "type": "string",
+              "value": "YOUR_GEMINI_API_KEY"
+            },
+            {
+              "id": "cfg-hunter-key",
+              "name": "hunterApiKey",
+              "type": "string",
+              "value": "YOUR_HUNTER_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0f1ec780-d11a-469a-9192-084053f3e6b8",
+      "name": "Input URL List",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2464,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expand list of URLs into individual n8n items for sequential processing\nconst firstItem = $input.first()?.json || {};\nlet rawUrls = firstItem.urls || firstItem['Directory URLs'] || firstItem.directoryUrls || [];\n\nif (typeof rawUrls === 'string') {\n  rawUrls = rawUrls.split(/[\\n,]/).map(u => u.trim()).filter(Boolean);\n}\n\nconst items = [];\nfor (const u of rawUrls) {\n  const trimmed = typeof u === 'string' ? u.trim() : '';\n  if (trimmed && trimmed.startsWith('http')) {\n    items.push({ json: { url: trimmed } });\n  }\n}\n\nif (items.length === 0) {\n  return [{ json: { url: '' } }];\n}\n\nreturn items;"
+      },
+      "id": "687e1d45-98a2-4930-b5b9-ab3c4124e4bb",
+      "name": "Prepare Individual URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "url": "={{ $json.url }}"
+      },
+      "id": "276dbe31-4335-43ee-abeb-4ef9d4e5e2c2",
+      "name": "Fetch Website HTML (1 by 1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2016,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-needs-hunter",
+              "leftValue": "={{ Boolean($json['First Name'] && $json['First Name'].trim() && (!$json['Email'] || $json['Email'].trim() === '')) }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1514861-6c45-4c54-8d37-000c3773b885",
+      "name": "Needs Hunter.io?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1100,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.hunter.io/v2/email-finder",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $json['Clean Domain'] || $json.Domain || 'asurams.edu' }}"
+            },
+            {
+              "name": "first_name",
+              "value": "={{ $json['First Name'] }}"
+            },
+            {
+              "name": "last_name",
+              "value": "={{ $json['Last Name'] }}"
+            },
+            {
+              "name": "api_key",
+              "value": "={{ $('Input URL List').first()?.json?.hunterApiKey || 'YOUR_HUNTER_API_KEY' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "3b81146c-fc84-456b-af43-3372e903168f",
+      "name": "1. Hunter.io Email Finder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -750,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const hunterResults = $input.all();\nconst extractorContacts = $('Gemini 3.5 Flash Lite Extractor').all().map(i => ({ ...i.json }));\n\nreturn hunterResults.map((item, idx) => {\n  let original = null;\n  try {\n    original = $('Needs Hunter.io?').itemMatching(idx)?.json;\n  } catch (e) {}\n\n  const resData = item.json?.data;\n  const resMeta = item.json?.meta?.params;\n  const fn = (resData?.first_name || resMeta?.first_name || original?.['First Name'] || '').trim().toLowerCase();\n  const ln = (resData?.last_name || resMeta?.last_name || original?.['Last Name'] || '').trim().toLowerCase();\n  const key = `${fn}_${ln}`;\n\n  if (!original) {\n    original = extractorContacts.find(c => `${(c['First Name']||'').toLowerCase()}_${(c['Last Name']||'').toLowerCase()}` === key) || item.json;\n  }\n\n  const updated = { ...original };\n  if (resData && resData.email) {\n    updated['Email'] = resData.email.trim();\n    updated['Email Source'] = 'Hunter.io';\n    updated['Enrichment Status'] = 'Enriched via Hunter.io';\n  } else {\n    if (!updated['Email']) updated['Email'] = '';\n    updated['Enrichment Status'] = 'No Hunter.io Match';\n  }\n  return { json: updated };\n});"
+      },
+      "id": "79fbfd69-d857-4db8-8550-4d73633c5b21",
+      "name": "Process Hunter Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "col-fn",
+              "name": "First Name",
+              "type": "string",
+              "value": "={{ $json['First Name'] || '' }}"
+            },
+            {
+              "id": "col-ln",
+              "name": "Last Name",
+              "type": "string",
+              "value": "={{ $json['Last Name'] || '' }}"
+            },
+            {
+              "id": "col-cr",
+              "name": "Credentials",
+              "type": "string",
+              "value": "={{ $json['Credentials'] || '' }}"
+            },
+            {
+              "id": "col-ti",
+              "name": "Title",
+              "type": "string",
+              "value": "={{ $json['Title'] || '' }}"
+            },
+            {
+              "id": "col-ca",
+              "name": "Campus",
+              "type": "string",
+              "value": "={{ $json['Campus'] || '' }}"
+            },
+            {
+              "id": "col-em",
+              "name": "Email",
+              "type": "string",
+              "value": "={{ $json['Email'] || '' }}"
+            },
+            {
+              "id": "col-ph",
+              "name": "Phone",
+              "type": "string",
+              "value": "={{ $json['Phone'] || '' }}"
+            }
+          ]
+        }
+      },
+      "id": "72727c61-e745-448a-bb57-371355ceea8d",
+      "name": "Format & Reorder Columns",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        300,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "=contacts_{{ $today.format('yyyy-MM-dd') }}.xlsx",
+          "headerRow": true
+        }
+      },
+      "id": "2cd109eb-4fc3-4731-a92d-5a56e59c87cd",
+      "name": "Generate Excel (.xlsx)",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        600,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function cleanHtml(html) {\n  if (!html) return '';\n  return html\n    .replace(/<a[^>]*data-name=['\"]([^'\"]+)['\"][^>]*data-domain=['\"]([^'\"]+)['\"][^>]*>[\\s\\S]*?<\\/a>/gi, ' Email: $1@$2 ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<svg[\\s\\S]*?<\\/svg>/gi, ' ')\n    .replace(/<!--[\\s\\S]*?-->/g, ' ')\n    .replace(/<a[^>]+href=['\"]mailto:([^'\"]+)['\"][^>]*>[\\s\\S]*?<\\/a>/gi, ' Email: $1 ')\n    .replace(/<a[^>]+href=['\"]tel:([^'\"]+)['\"][^>]*>[\\s\\S]*?<\\/a>/gi, ' Phone: $1 ')\n    .replace(/<(?:br|p|div|tr|li|h[1-6])[^>]*>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/[ \\t]+/g, ' ')\n    .split('\\n')\n    .map(line => line.trim())\n    .filter(Boolean)\n    .join('\\n');\n}\n\nfunction filterLargeTables(html, sourceUrl) {\n  if (!html) return html;\n  const trMatches = html.match(/<tr[^>]*>[\\s\\S]*?<\\/tr>/gi);\n  if (!trMatches || trMatches.length <= 80) return html;\n\n  const headerTr = trMatches[0] || '';\n  const rows = trMatches.slice(1);\n\n  // If URL or page is focused on nursing, strictly isolate nursing rows\n  const isNursing = /nurs/i.test(sourceUrl);\n  if (isNursing) {\n    const nursingRows = rows.filter(tr => /nurs/i.test(tr));\n    if (nursingRows.length > 0) {\n      return '<table>\\n' + headerTr + '\\n' + nursingRows.join('\\n') + '\\n</table>';\n    }\n  }\n\n  // General department isolation if URL contains specific department path\n  const urlMatches = sourceUrl.toLowerCase().match(/(?:department|school|college|division|program)s?\\/([a-z0-9_-]+)/);\n  if (urlMatches && urlMatches[1] && urlMatches[1].length > 3) {\n    const deptKeyword = urlMatches[1].replace(/[-_]/g, '.*');\n    try {\n      const reg = new RegExp(deptKeyword, 'i');\n      const deptRows = rows.filter(tr => reg.test(tr));\n      if (deptRows.length > 0 && deptRows.length < rows.length) {\n        return '<table>\\n' + headerTr + '\\n' + deptRows.join('\\n') + '\\n</table>';\n      }\n    } catch (e) {}\n  }\n\n  // Fallback: if rows mention nursing, prefer nursing\n  const fallbackNursing = rows.filter(tr => /nurs/i.test(tr));\n  if (fallbackNursing.length > 0 && fallbackNursing.length < rows.length) {\n    return '<table>\\n' + headerTr + '\\n' + fallbackNursing.join('\\n') + '\\n</table>';\n  }\n\n  return html;\n}\n\nfunction extractDomain(url) {\n  if (!url) return '';\n  const match = url.match(/https?:\\/\\/(?:www\\.)?([^\\/\\s:]+)/i);\n  if (match) return match[1].toLowerCase();\n  return url.replace(/^(?:https?:\\/\\/)?(?:www\\.)?([^\\/\\s:]+).*/i, '$1').toLowerCase();\n}\n\nfunction getCleanDomain(domain) {\n  const parts = (domain || '').replace(/^www\\./, '').split('.');\n  if (parts.length >= 2) return parts.slice(-2).join('.');\n  return domain;\n}\n\nfunction getUniversity(domain, html) {\n  const dom = (domain || '').toLowerCase().replace('www.', '');\n  const unis = {\n    'lagrange.edu': 'LaGrange College',\n    'gntc.edu': 'Georgia Northwestern Technical College',\n    'columbusstate.edu': 'Columbus State University',\n    'asurams.edu': 'Albany State University',\n    'georgiasouthern.edu': 'Georgia Southern University',\n    'augusta.edu': 'Augusta University',\n    'uga.edu': 'University of Georgia',\n    'emory.edu': 'Emory University',\n    'kennesaw.edu': 'Kennesaw State University',\n    'gsu.edu': 'Georgia State University'\n  };\n  for (const [k, v] of Object.entries(unis)) {\n    if (dom.includes(k)) return v;\n  }\n  const titleMatch = html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);\n  if (titleMatch) {\n    const parts = titleMatch[1].replace(/\\s+/g, ' ').trim().split(/[-|–—•]/);\n    for (let i = parts.length - 1; i >= 0; i--) {\n      const p = parts[i].trim();\n      if (/university|college|institute/i.test(p)) return p;\n    }\n  }\n  const core = dom.split('.')[0] || 'University';\n  return core.charAt(0).toUpperCase() + core.slice(1) + ' University';\n}\n\nconst allInputs = $input.all();\nconst finalContacts = [];\nconst seenKeys = new Set();\nconst cloudflareBlockedUrls = [];\nconst noContactsUrls = [];\n\nlet geminiApiKey = 'YOUR_GEMINI_API_KEY';\nlet hunterApiKey = 'YOUR_HUNTER_API_KEY';\ntry {\n  const inputObj = $('Input URL List').first()?.json;\n  if (inputObj?.geminiApiKey) geminiApiKey = inputObj.geminiApiKey;\n  if (inputObj?.hunterApiKey) hunterApiKey = inputObj.hunterApiKey;\n} catch (e) {}\n\nfor (let i = 0; i < allInputs.length; i++) {\n  const item = allInputs[i];\n  const dataObj = item.json;\n\n  let sourceUrl = dataObj.url || '';\n  if (!sourceUrl) {\n    try {\n      sourceUrl = $('Prepare Individual URLs').itemMatching(i)?.json?.url || '';\n    } catch (e) {}\n  }\n  if (!sourceUrl) {\n    try {\n      sourceUrl = $('Prepare Individual URLs').first()?.json?.url || '';\n    } catch (e) {}\n  }\n\n  const domain = extractDomain(sourceUrl);\n  const cleanDomain = getCleanDomain(domain);\n\n  let rawHtml = typeof dataObj.data === 'string' ? dataObj.data : (typeof dataObj === 'string' ? dataObj : JSON.stringify(dataObj));\n  if (!rawHtml || rawHtml.length < 50) continue;\n\n  const university = getUniversity(domain, rawHtml);\n\n  // Detect Cloudflare WAF protection / 403 bot challenges\n  const isCloudflare = (\n    (typeof rawHtml === 'string' && (\n      rawHtml.includes('challenges.cloudflare.com') ||\n      rawHtml.includes('Just a moment...') ||\n      rawHtml.includes('Enable JavaScript and cookies to continue') ||\n      rawHtml.includes('403 Forbidden')\n    )) ||\n    (dataObj.error && (\n      dataObj.error.status === 403 ||\n      dataObj.error.statusCode === 403 ||\n      String(dataObj.error.message || '').includes('403')\n    ))\n  );\n\n  if (isCloudflare) {\n    cloudflareBlockedUrls.push(sourceUrl || 'URL');\n    continue;\n  }\n\n  if (!rawHtml || rawHtml.length < 50) {\n    noContactsUrls.push(sourceUrl || 'URL');\n    continue;\n  }\n\n  // Handle dynamic AJAX provider directories (e.g., GNTC)\n  if (rawHtml.includes('pf_provider_list') || rawHtml.includes('wp-json/custom/v1/providers/list')) {\n    try {\n      const rootMatch = sourceUrl.match(/^(https?:\\/\\/[^\\/]+)/i);\n      const root = rootMatch ? rootMatch[1] : '';\n      const apiUrl = root + '/wp-json/custom/v1/providers/list/';\n\n      const optRegex = /<option[^>]+value=['\"](\\d+)['\"][^>]*>([^<]+)<\\/option>/gi;\n      let om;\n      const deptIds = [];\n      while ((om = optRegex.exec(rawHtml)) !== null) {\n        if (/nurs/i.test(om[2])) {\n          deptIds.push({ id: om[1], name: om[2].trim() });\n        }\n      }\n      if (deptIds.length === 0) deptIds.push({ id: '0', name: 'All' });\n\n      for (const d of deptIds) {\n        try {\n          const apiRes = await this.helpers.httpRequest({\n            method: 'POST',\n            url: apiUrl,\n            headers: {\n              'Content-Type': 'application/x-www-form-urlencoded',\n              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'\n            },\n            body: `filter_specialty=${encodeURIComponent(d.id)}&filter_practice=&filter_ft=1&filter_location=0&filter_query=`,\n            timeout: 15000\n          });\n          const apiJson = typeof apiRes === 'string' ? JSON.parse(apiRes) : apiRes;\n          if (apiJson && apiJson.html) {\n            rawHtml += `\\n\\n=== DEPARTMENT: ${d.name} ===\\n` + apiJson.html;\n          }\n        } catch (e) {}\n      }\n    } catch (e) {}\n  }\n\n  // Handle Angular / AJAX JSON feed directories (e.g., LaGrange College)\n  const jsonFeedMatch = rawHtml.match(/(?:var\\s+jsonFeed|jsonFeed)\\s*=\\s*['\"]([^'\"]+\\.json[^'\"]*)['\"]/i) || rawHtml.match(/['\"]([^'\"]+directory[^'\"]*\\.json[^'\"]*)['\"]/i);\n  if (jsonFeedMatch) {\n    try {\n      const feedRel = jsonFeedMatch[1].replace(/amp;/g, '');\n      let feedUrl = feedRel;\n      if (!feedRel.startsWith('http')) {\n        const rootMatch = sourceUrl.match(/^(https?:\\/\\/[^\\/]+)/i);\n        const root = rootMatch ? rootMatch[1] : '';\n        if (feedRel.startsWith('/')) {\n          feedUrl = root + feedRel;\n        } else {\n          feedUrl = sourceUrl.replace(/\\/[^\\/]*$/, '/') + feedRel;\n        }\n      }\n\n      const feedRes = await this.helpers.httpRequest({\n        method: 'GET',\n        url: feedUrl,\n        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },\n        timeout: 15000\n      });\n\n      const feedData = typeof feedRes === 'string' ? JSON.parse(feedRes) : feedRes;\n      let items = [];\n      if (feedData && typeof feedData === 'object') {\n        for (const k of ['faculty', 'directory', 'staff', 'people', 'members', 'data']) {\n          if (Array.isArray(feedData[k])) {\n            items = feedData[k];\n            break;\n          }\n        }\n        if (items.length === 0 && Array.isArray(feedData)) {\n          items = feedData;\n        }\n      }\n\n      if (items.length > 0) {\n        const cards = [];\n        for (const it of items) {\n          if (typeof it === 'object' && it !== null) {\n            const fn = it.firstName || it.first_name || it.name || '';\n            const ln = it.lastName || it.last_name || '';\n            const fullName = ln ? `${fn} ${ln}`.trim() : fn;\n            const title = it.title || it.position || it.role || '';\n            const dept = it.departments || it.deptDisplay || it.department || '';\n            const email = it.email || it.mail || '';\n            const phone = it.phone || it.telephone || '';\n            const office = it.office || it.location || it.campus || '';\n            cards.push(`<div class=\"faculty-card\"><h3>${fullName}</h3><p>Title: ${title}</p><p>Dept: ${dept}</p><p>Email: ${email}</p><p>Phone: ${phone}</p><p>Campus: ${office}</p></div>`);\n          }\n        }\n        if (cards.length > 0) {\n          rawHtml += '\\n\\n<!-- LOADED DYNAMIC JSON FEED -->\\n' + cards.join('\\n');\n        }\n      }\n    } catch (e) {}\n  }\n\n  // If the directory is a master table with hundreds of multi-department faculty rows, isolate the target department rows\n  const processedHtml = filterLargeTables(rawHtml, sourceUrl);\n  let cleanText = cleanHtml(processedHtml);\n\n  // Safeguard: only truncate if text is truly gigantic (> 300,000 chars)\n  if (cleanText.length > 300000) {\n    const lines = cleanText.split('\\n');\n    const relevantLines = lines.filter(l => /nurs|clinical|dean|chair|director|professor|instructor|faculty/i.test(l));\n    if (relevantLines.length > 30) {\n      cleanText = relevantLines.join('\\n');\n    }\n    if (cleanText.length > 250000) {\n      cleanText = cleanText.slice(0, 250000);\n    }\n  }\n\n  // Deep crawl individual faculty profiles if main page lacks direct emails\n  const emailMatches = cleanText.match(/[\\w.-]+@[\\w.-]+\\.\\w+/g) || [];\n  if (emailMatches.length < 10) {\n    const linkRegex = /<a\\s+[^>]*href=[\"']([^\"']+)[\"'][^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let match;\n    const profileUrls = [];\n    const seenP = new Set();\n    const exclude = /cost|aid|tuition|admission|apply|athletics|news|event|calendar|privacy|terms|accessibility|map|catalog|degree|program|resource|international|board|record|dining|bookstore|job|portal|login|student|department|college/i;\n\n    while ((match = linkRegex.exec(rawHtml)) !== null) {\n      const href = match[1].trim();\n      const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n      if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) continue;\n\n      let fullUrl = href;\n      try {\n        if (href.startsWith('http')) {\n          fullUrl = href.split('?')[0].split('#')[0];\n        } else if (href.startsWith('/')) {\n          const rootMatch = sourceUrl.match(/^(https?:\\/\\/[^\\/]+)/i);\n          const root = rootMatch ? rootMatch[1] : '';\n          fullUrl = root + href.split('?')[0].split('#')[0];\n        } else {\n          fullUrl = sourceUrl.replace(/\\/[^\\/]*$/, '/') + href.split('?')[0].split('#')[0];\n        }\n      } catch (e) { continue; }\n\n      if (!fullUrl.toLowerCase().includes(domain.split('.')[0])) continue;\n      if (seenP.has(fullUrl)) continue;\n\n      const path = fullUrl.replace(/^https?:\\/\\/[^\\/]+/i, '').toLowerCase();\n      if (exclude.test(path) || exclude.test(text)) continue;\n\n      const hasMarker = /\\/(?:profiles?|faculty(?:-staff)?|people|person|bio|directory\\/profile|employee)\\//i.test(path);\n      const isName = /^(?:dr\\.|prof\\.|mr\\.|ms\\.|mrs\\.)\\s+[A-Z][a-z]+/i.test(text) || (text.split(' ').length >= 2 && text.split(' ').length <= 4 && /^[A-Z]/.test(text));\n\n      if (hasMarker || isName) {\n        seenP.add(fullUrl);\n        profileUrls.push({ url: fullUrl, name: text });\n      }\n    }\n\n    if (profileUrls.length > 0) {\n      const crawlLimit = Math.min(profileUrls.length, 25);\n      const profileSections = [];\n      for (let pIdx = 0; pIdx < crawlLimit; pIdx++) {\n        const pObj = profileUrls[pIdx];\n        try {\n          const pRes = await this.helpers.httpRequest({\n            method: 'GET',\n            url: pObj.url,\n            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },\n            timeout: 8000\n          });\n          const pClean = cleanHtml(typeof pRes === 'string' ? pRes : JSON.stringify(pRes));\n          profileSections.push(`=== FACULTY PROFILE: ${pObj.name} (${pObj.url}) ===\\n` + pClean.slice(0, 1500));\n        } catch (e) {}\n      }\n      if (profileSections.length > 0) {\n        cleanText += '\\n\\n=== INDIVIDUAL FACULTY PROFILE BIO PAGES ===\\n\\n' + profileSections.join('\\n\\n');\n      }\n    }\n  }\n\n  const systemPrompt = `You are an elite data extraction specialist for higher education and university faculty directories.\nTask:\nExtract ALL Nursing faculty, leadership, instructors, and staff members from the provided webpage content and individual profile bio sections into an Excel-ready dataset.\n\nScope & Selection Criteria:\n1. Include all individuals affiliated with the School of Nursing, Department of Nursing, or Nursing programs.\n2. Include anyone holding nursing or clinical healthcare credentials/degrees (e.g. RN, BSN, MSN, DNP, PhD in Nursing, APRN, FNP, CNE, AGNP, CNS) or teaching nursing courses.\n3. Include nursing administrative and student support staff (e.g. Chairs, Directors, Program Coordinators, Skills Lab Coordinators, Advisors).\n4. If the page contains a master university directory featuring multiple departments, extract ONLY the individuals belonging to Nursing or Health Professions.\n5. If individual faculty profile bio pages are appended, extract their exact email, direct phone, office location, and education degrees/credentials from their profile section.\n6. Extract EVERY single matching person without truncation, omission, or placeholders.\n\nField Specifications:\n- \"first_name\": Clean first name (remove honorifics such as Dr., Prof., Mr., Ms., Mrs.).\n- \"last_name\": Last name.\n- \"credentials\": All post-nominal degrees, licenses, and certifications (e.g., PhD, DNP, MSN, BSN, RN, FNP-C, APRN). Leave empty string \"\" if none found.\n- \"title\": Complete job title, faculty rank, or administrative role.\n- \"campus\": Specific campus name, branch, or office location. If specific campus detail is not available, use the University name: ${university}.\n- \"email\": Institutional email address. If not found, leave empty string \"\".\n- \"phone\": Direct or office phone number. If not found, leave empty string \"\".\n\nOutput Format:\nReturn ONLY a valid, parseable JSON array of objects with keys:\n\"first_name\", \"last_name\", \"credentials\", \"title\", \"campus\", \"email\", \"phone\"`;\n\n  const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=' + geminiApiKey;\n\n  let geminiRes = null;\n  let lastErr = null;\n\n  for (let attempt = 0; attempt < 3; attempt++) {\n    try {\n      geminiRes = await this.helpers.httpRequest({\n        method: 'POST',\n        url: geminiUrl,\n        headers: { 'Content-Type': 'application/json' },\n        body: {\n          contents: [\n            {\n              parts: [\n                {\n                  text: systemPrompt + '\\n\\nWebpage Content:\\n' + cleanText\n                }\n              ]\n            }\n          ],\n          generationConfig: {\n            responseMimeType: 'application/json',\n            temperature: 0.0,\n            maxOutputTokens: 8192\n          }\n        },\n        json: true,\n        timeout: 60000\n      });\n      if (geminiRes) break;\n    } catch (err) {\n      lastErr = err;\n      if (attempt < 2 && (err.message.includes('429') || err.message.includes('rate'))) {\n        await new Promise(resolve => setTimeout(resolve, 4000 * (attempt + 1)));\n      } else {\n        break;\n      }\n    }\n  }\n\n  if (!geminiRes && lastErr) {\n    throw new Error('Gemini extraction failed: ' + lastErr.message);\n  }\n\n  const candidateText = geminiRes?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';\n  let parsedContacts = [];\n  try {\n    parsedContacts = JSON.parse(candidateText);\n  } catch (e) {\n    parsedContacts = [];\n  }\n\n  if (Array.isArray(parsedContacts) && parsedContacts.length === 0) {\n    noContactsUrls.push(sourceUrl || 'URL');\n  }\n  if (Array.isArray(parsedContacts)) {\n    for (const c of parsedContacts) {\n      const fn = (c.first_name || '').trim();\n      const ln = (c.last_name || '').trim();\n      const em = (c.email || '').trim().toLowerCase();\n      const camp = (c.campus || '').trim();\n      const key = `${fn}_${ln}`.toLowerCase();\n\n      if (seenKeys.has(key)) continue;\n      if (fn || ln || em) {\n        seenKeys.add(key);\n        finalContacts.push({\n          json: {\n            'First Name': fn,\n            'Last Name': ln,\n            'Credentials': (c.credentials || '').trim(),\n            'Title': (c.title || '').trim(),\n            'Campus': (!camp || camp.toLowerCase() === 'none') ? university : camp,\n            'Email': em,\n            'Phone': (c.phone || '').trim(),\n            'Source URL': sourceUrl,\n            'Domain': domain,\n            'Clean Domain': cleanDomain\n          }\n        });\n      }\n    }\n  }\n}\n\nif (finalContacts.length > 0) {\n  return finalContacts;\n}\n\nif (cloudflareBlockedUrls.length > 0) {\n  return [{\n    json: {\n      isStatusMessage: true,\n      title: 'Access Blocked (Cloudflare Protection)',\n      message: 'Access blocked: The directory URL (' + cloudflareBlockedUrls.join(', ') + ') is protected by Cloudflare bot security (HTTP 403 Forbidden). Automatic access is restricted by the institution.',\n      reason: 'cloudflare_blocked'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    isStatusMessage: true,\n    title: 'No Nursing Contacts Found',\n    message: 'No nursing faculty or staff contacts were found on the provided directory page(s). Please verify the directory link or select a page containing the nursing department.',\n    reason: 'no_nursing_found'\n  }\n}];"
+      },
+      "id": "fc2b3cc0-af3c-46a6-85cb-7049cd2bb75b",
+      "name": "Gemini 3.5 Flash Lite Extractor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1696,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "93b62c68-b8bc-4220-b45d-d57b1be0410b",
+      "name": "Merge Contacts",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -50,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "formDescription": "Enter one or more URLs (separate multiple URLs with commas or new lines) to automatically extract contacts and download your Excel spreadsheet.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Contact URLs (Separate multiple with commas or new lines)",
+              "fieldName": "urls",
+              "fieldType": "textarea",
+              "placeholder": "https://example.edu/faculty-and-staff\nhttps://example.edu/people\n(or paste multiple URLs separated by commas)",
+              "requiredField": true
+            }
+          ]
+        },
+        "formTitle": "Contact Finder",
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Find Contacts & Download Excel",
+          "path": "contact-scraper"
+        }
+      },
+      "id": "40728eff-4424-435a-97bd-9776b010d3f4",
+      "name": "On Form Submitted",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -2464,
+        208
+      ],
+      "webhookId": "b991c4c5-419b-49f8-b2d7-de9a01503b5b"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "returnBinary",
+        "completionTitle": "Contacts Exported Successfully!",
+        "completionMessage": "Your contact directory spreadsheet has been created and your download has started automatically.<br><br><a href=\"https://suraj182004.app.n8n.cloud/form/contact-scraper\" style=\"display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;border-radius:8px;font-weight:600;text-decoration:none;margin-top:16px;box-shadow:0 4px 6px -1px rgba(79, 70, 229, 0.2);\">🔄 Extract More Contacts / Try Another URL</a><br><br><small><a href=\"https://suraj182004.app.n8n.cloud/form/contact-scraper\" style=\"color:#6366f1;text-decoration:underline;\">Or click here if button is not clickable</a></small>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0fe6b642-f2e3-4faa-b226-42691a12c746",
+      "name": "Download Excel Form Completion",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        400
+      ],
+      "webhookId": "e76a7e1f-71b1-477e-ad47-b67744ef3403"
+    },
+    {
+      "id": "f3bf0924-ff18-4275-9bdb-e94242a654b2",
+      "name": "Contacts Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-contacts-found",
+              "leftValue": "={{ Boolean($json.isStatusMessage) }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": false
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1c416db5-ec16-457d-ade5-34cea1e48f08",
+      "name": "Show Status Message",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        -1100,
+        600
+      ],
+      "parameters": {
+        "completionMessage": "={{ $json.message || 'No nursing contacts were found on the provided directory page.' }}",
+        "completionTitle": "={{ $json.title || 'No Contacts Found' }}",
+        "operation": "completion",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "3eb8bc1e-c60c-4adf-91ed-502a209d8b1d"
+    }
+  ],
+  "nodeGroups": [],
+  "activeVersion": {
+    "sameAsDraft": true
+  },
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

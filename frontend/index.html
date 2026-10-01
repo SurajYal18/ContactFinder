@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Finder - Automated Contact & Email Discovery</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .badge { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i data-lucide="users" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">Contact Finder</h1>
+          <p class="text-xs text-slate-400">Automated Contact & Email Discovery</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <div id="backend-status" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="status-dot"></span>
+          <span id="status-text" class="text-slate-300">Checking API...</span>
+        </div>
+        <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition" title="Connection Settings">
+          <i data-lucide="settings" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- Hero / Input Configuration Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      
+      <!-- Left Column: Input Form (7 cols) -->
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="globe" class="w-5 h-5 text-indigo-400"></i>
+              <h2 class="font-semibold text-slate-100">Contact URLs</h2>
+            </div>
+            <span class="text-xs text-slate-400">Enter multiple URLs (comma or new line separated)</span>
+          </div>
+
+          <!-- URL Inputs -->
+          <div class="space-y-2">
+            <textarea id="urls-input" rows="5" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" placeholder="Paste contact URLs here (separate multiple URLs with commas or new lines)..."></textarea>
+          </div>
+
+          <!-- Options -->
+          <div class="pt-2 border-t border-slate-800/80">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Spreadsheet Filename (Optional)</label>
+              <input type="text" id="filename-input" placeholder="contacts_export.xlsx" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <span class="text-[11px] text-slate-500">Default: auto-generated timestamp filename.</span>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-2">
+            <button id="scrape-btn" onclick="startScrape()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+              <span id="btn-text">Find Contacts & Export Excel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Status & Live Steps (5 cols) -->
+      <div class="lg:col-span-5 space-y-6">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5 h-full flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="activity" class="w-5 h-5 text-emerald-400"></i>
+              <h2 class="font-semibold text-slate-100">Execution Status</h2>
+            </div>
+            <span id="timer-badge" class="badge bg-slate-800 text-slate-400 border border-slate-700">Idle</span>
+          </div>
+
+          <!-- Simple Stepper -->
+          <div class="space-y-3 flex-1">
+            <div id="step-1" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">1</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Fetch Web Pages</p>
+                <p class="text-xs text-slate-500">Retrieves web pages and identifies profile sections.</p>
+              </div>
+            </div>
+
+            <div id="step-2" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">2</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Extract Contacts</p>
+                <p class="text-xs text-slate-500">Finds names, titles, credentials, and available details.</p>
+              </div>
+            </div>
+
+            <div id="step-3" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">3</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Find Missing Details</p>
+                <p class="text-xs text-slate-500">Automatically discovers missing emails and locations.</p>
+              </div>
+            </div>
+
+            <div id="step-4" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">4</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Create Spreadsheet</p>
+                <p class="text-xs text-slate-500">Compiles contacts into a clean, ready Excel file.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity Log Area -->
+          <div class="bg-slate-950 rounded-xl p-3 border border-slate-800/80 font-mono text-xs text-slate-400 max-h-36 overflow-y-auto space-y-1" id="log-box">
+            <p class="text-slate-600">// Ready. Enter contact URLs and click Find Contacts.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Alert Banner (Shown when Cloudflare 403 or 0 contacts found) -->
+    <div id="status-alert-banner" class="hidden p-5 rounded-2xl border transition shadow-xl space-y-2">
+      <div class="flex items-center space-x-3">
+        <div id="alert-icon-container" class="w-10 h-10 rounded-xl flex items-center justify-center">
+          <i id="alert-icon" data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 id="alert-title" class="font-semibold text-base">Status Message</h3>
+          <p id="alert-desc" class="text-sm text-slate-300">Detailed description here.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Section (Visible after extraction) -->
+    <section id="results-section" class="space-y-6 hidden">
+      
+      <!-- Metrics Overview Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Total Extracted</p>
+          <p id="metric-total" class="text-3xl font-bold text-indigo-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Unique Contacts</p>
+          <p id="metric-unique" class="text-3xl font-bold text-emerald-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Emails Found</p>
+          <p id="metric-emails" class="text-3xl font-bold text-sky-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Phones Found</p>
+          <p id="metric-phones" class="text-3xl font-bold text-amber-400 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Table Toolbar -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
+          <div class="relative w-full max-w-md">
+            <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="table-search" oninput="filterTable()" placeholder="Search contacts by name, title, campus, email..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <span id="filtered-count" class="text-xs text-slate-400 whitespace-nowrap">Showing 0 contacts</span>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <a id="download-btn" href="#" download class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Download Excel (.xlsx)</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead class="bg-slate-950/80 sticky top-0 z-10 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-semibold">
+              <tr>
+                <th class="py-3.5 px-4 w-12 text-center">#</th>
+                <th class="py-3.5 px-4">First Name</th>
+                <th class="py-3.5 px-4">Last Name</th>
+                <th class="py-3.5 px-4">Credentials</th>
+                <th class="py-3.5 px-4">Title</th>
+                <th class="py-3.5 px-4">Campus / Location</th>
+                <th class="py-3.5 px-4">Email</th>
+                <th class="py-3.5 px-4">Phone</th>
+              </tr>
+            </thead>
+            <tbody id="table-body" class="divide-y divide-slate-800/60 font-normal">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-semibold text-slate-100 flex items-center gap-2">
+          <i data-lucide="settings-2" class="w-5 h-5 text-indigo-400"></i> Connection Settings
+        </h3>
+        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Backend Server URL</label>
+        <input type="text" id="api-url-input" value="http://127.0.0.1:8000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <span class="text-[11px] text-slate-500">Default local server address.</span>
+      </div>
+      <div class="pt-2 flex justify-end">
+        <button onclick="saveSettings()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Logic -->
+  <script>
+    let API_BASE = localStorage.getItem("faculty_scraper_api") || (window.location.protocol.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000");
+    let extractedData = [];
+    let timerInterval = null;
+
+    // Initialize Lucide icons on load
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      document.getElementById("api-url-input").value = API_BASE;
+      checkHealth();
+    });
+
+    // Check backend health status
+    async function checkHealth() {
+      const dot = document.getElementById("status-dot");
+      const text = document.getElementById("status-text");
+      try {
+        const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          const data = await res.json();
+          dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+          text.textContent = "Server Online";
+          addLog("Connected to server successfully.");
+        } else {
+          throw new Error();
+        }
+      } catch (e) {
+        dot.className = "w-2 h-2 rounded-full bg-rose-500";
+        text.textContent = "Server Offline (port 8000)";
+        addLog("Cannot connect to server at " + API_BASE);
+      }
+    }
+
+    // Toggle settings modal
+    function toggleSettingsModal() {
+      const modal = document.getElementById("settings-modal");
+      modal.classList.toggle("hidden");
+    }
+
+    // Save custom settings
+    function saveSettings() {
+      API_BASE = document.getElementById("api-url-input").value.trim().replace(/\/$/, "");
+      localStorage.setItem("faculty_scraper_api", API_BASE);
+      toggleSettingsModal();
+      checkHealth();
+    }
+
+    // Logging helper
+    function addLog(msg) {
+      const box = document.getElementById("log-box");
+      const p = document.createElement("p");
+      const time = new Date().toLocaleTimeString();
+      p.textContent = `[${time}] ${msg}`;
+      box.appendChild(p);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // Set active stepper state
+    function setStep(stepNum) {
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        const icon = el.querySelector(".step-icon");
+        if (i < stepNum) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold";
+          icon.innerHTML = "✓";
+        } else if (i === stepNum) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/50 shadow-md shadow-indigo-500/10 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold animate-pulse";
+          icon.innerHTML = i;
+        } else {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold";
+          icon.innerHTML = i;
+        }
+      }
+    }
+
+    // Main scrape trigger
+    async function startScrape() {
+      const rawUrls = document.getElementById("urls-input").value.trim();
+      if (!rawUrls) {
+        alert("Please enter at least one contact URL.");
+        return;
+      }
+
+      const urls = rawUrls.split(/[\n,]/).map(u => u.trim()).filter(u => u.startsWith("http"));
+      if (urls.length === 0) {
+        alert("Please enter valid HTTP/HTTPS URLs.");
+        return;
+      }
+
+      const customFilename = document.getElementById("filename-input").value.trim();
+
+      const btn = document.getElementById("scrape-btn");
+      const btnText = document.getElementById("btn-text");
+      const timerBadge = document.getElementById("timer-badge");
+
+      btn.disabled = true;
+      btnText.textContent = "Finding Contacts...";
+      let seconds = 0;
+      timerBadge.textContent = "0s";
+      timerBadge.className = "badge bg-indigo-950 text-indigo-400 border border-indigo-800 animate-pulse";
+      timerInterval = setInterval(() => {
+        seconds++;
+        timerBadge.textContent = `${seconds}s`;
+      }, 1000);
+
+      addLog(`Initiating contact discovery across ${urls.length} URL(s)...`);
+      setStep(1);
+
+      try {
+        setStep(2);
+        const payload = {
+          urls: urls,
+          output_filename: customFilename || null
+        };
+
+        const res = await fetch(`${API_BASE}/api/scrape`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(errData.detail || "Server returned error");
+        }
+
+        setStep(3);
+        const result = await res.json();
+        setStep(4);
+
+        // Process individual URL logs into activity box
+        if (result.url_logs && result.url_logs.length > 0) {
+          result.url_logs.forEach(l => {
+            if (l.status === 'blocked') {
+              addLog(`⚠️ [BLOCKED] ${l.url}: ${l.message}`);
+            } else if (l.status === 'no_contacts') {
+              addLog(`ℹ️ [NO CONTACTS] ${l.url}: ${l.message}`);
+            } else {
+              addLog(`✓ [FOUND] ${l.url}: Extracted ${l.count} contact(s).`);
+            }
+          });
+        }
+
+        renderResults(result);
+
+      } catch (err) {
+        addLog(`ERROR: ${err.message}`);
+        alert(`Discovery failed: ${err.message}`);
+      } finally {
+        clearInterval(timerInterval);
+        btn.disabled = false;
+        btnText.textContent = "Find Contacts & Export Excel";
+      }
+    }
+
+    // Render returned results in dashboard
+    function renderResults(data) {
+      extractedData = data.contacts || [];
+      const banner = document.getElementById("status-alert-banner");
+      const titleEl = document.getElementById("alert-title");
+      const descEl = document.getElementById("alert-desc");
+      const iconContainer = document.getElementById("alert-icon-container");
+      const timerBadge = document.getElementById("timer-badge");
+
+      if (extractedData.length === 0) {
+        // Show status message banner
+        banner.classList.remove("hidden");
+        if (data.status === "blocked") {
+          banner.className = "p-5 rounded-2xl border border-rose-500/40 bg-rose-950/40 transition shadow-xl space-y-2 text-rose-200";
+          iconContainer.className = "w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center";
+          titleEl.textContent = "Access Blocked (Cloudflare Anti-Bot Security)";
+          descEl.textContent = data.message || "Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden). Automatic access is restricted by the institution.";
+          timerBadge.textContent = "Blocked";
+          timerBadge.className = "badge bg-rose-950 text-rose-400 border border-rose-800";
+        } else {
+          banner.className = "p-5 rounded-2xl border border-amber-500/40 bg-amber-950/40 transition shadow-xl space-y-2 text-amber-200";
+          iconContainer.className = "w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center";
+          titleEl.textContent = "No Nursing Contacts Found";
+          descEl.textContent = data.message || "No nursing faculty or staff contacts were found on this directory URL. Please check the URL or confirm that nursing faculty are listed on that page.";
+          timerBadge.textContent = "0 Found";
+          timerBadge.className = "badge bg-amber-950 text-amber-400 border border-amber-800";
+        }
+        document.getElementById("results-section").classList.add("hidden");
+        banner.scrollIntoView({ behavior: "smooth" });
+        lucide.createIcons();
+        return;
+      }
+
+      // Hide banner if contacts were found
+      banner.classList.add("hidden");
+      timerBadge.textContent = "Complete";
+      timerBadge.className = "badge bg-emerald-950 text-emerald-400 border border-emerald-800";
+
+      // Update metric cards
+      document.getElementById("metric-total").textContent = data.total_extracted || 0;
+      document.getElementById("metric-unique").textContent = data.unique_contacts || 0;
+      
+      const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
+      const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
+      document.getElementById("metric-emails").textContent = emailCount;
+      document.getElementById("metric-phones").textContent = phoneCount;
+
+      // Update download link
+      const dlBtn = document.getElementById("download-btn");
+      dlBtn.href = `${API_BASE}${data.download_url}`;
+
+      // Populate table
+      populateTable(extractedData);
+
+      // Reveal section
+      document.getElementById("results-section").classList.remove("hidden");
+      document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
+    }
+
+    // Populate data table rows
+    function populateTable(rows) {
+      const tbody = document.getElementById("table-body");
+      tbody.innerHTML = "";
+
+      document.getElementById("filtered-count").textContent = `Showing ${rows.length} contacts`;
+
+      rows.forEach((c, idx) => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-800/40 transition";
+
+        // Format credentials as badges
+        const credsRaw = c.credentials || c.credential || "";
+        let credsHtml = "-";
+        if (credsRaw) {
+          const tokens = credsRaw.split(/[,/]/).map(t => t.trim()).filter(Boolean);
+          credsHtml = tokens.map(t => `<span class="badge bg-indigo-950 text-indigo-300 border border-indigo-800 mr-1 mb-1">${t}</span>`).join("");
+        }
+
+        const emailHtml = c.email ? `<a href="mailto:${c.email}" class="text-sky-400 hover:underline flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 inline"></i>${c.email}</a>` : '<span class="text-slate-600">-</span>';
+        const phoneHtml = c.phone ? `<a href="tel:${c.phone}" class="text-slate-300 hover:text-white flex items-center gap-1"><i data-lucide="phone" class="w-3.5 h-3.5 inline text-slate-500"></i>${c.phone}</a>` : '<span class="text-slate-600">-</span>';
+
+        tr.innerHTML = `
+          <td class="py-3 px-4 text-center text-xs text-slate-500 font-mono">${idx + 1}</td>
+          <td class="py-3 px-4 font-medium text-slate-100">${c.first_name || ""}</td>
+          <td class="py-3 px-4 font-medium text-slate-100">${c.last_name || ""}</td>
+          <td class="py-3 px-4">${credsHtml}</td>
+          <td class="py-3 px-4 text-slate-300">${c.title || ""}</td>
+          <td class="py-3 px-4 text-slate-300">${c.campus || ""}</td>
+          <td class="py-3 px-4">${emailHtml}</td>
+          <td class="py-3 px-4">${phoneHtml}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      lucide.createIcons();
+    }
+
+    // Filter table by search query
+    function filterTable() {
+      const q = document.getElementById("table-search").value.toLowerCase().trim();
+      if (!q) {
+        populateTable(extractedData);
+        return;
+      }
+
+      const filtered = extractedData.filter(c => {
+        return (
+          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
+          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
+          ((c.credentials || c.credential || "").toLowerCase().includes(q)) ||
+          (c.title && c.title.toLowerCase().includes(q)) ||
+          (c.campus && c.campus.toLowerCase().includes(q)) ||
+          (c.email && c.email.toLowerCase().includes(q))
+        );
+      });
+
+      populateTable(filtered);
+    }
+  </script>
+</body>
+</html>
