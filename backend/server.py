@@ -181,7 +181,10 @@ def scrape_directories(req: ScrapeRequest):
         base_name += ".xlsx"
 
     excel_path = os.path.join(EXPORTS_DIR, base_name)
-    export_contacts_to_excel(unique_contacts, excel_path)
+    try:
+        export_contacts_to_excel(unique_contacts, excel_path)
+    except Exception as exc:
+        print(f"Excel export warning: {exc}")
 
     return {
         "status": res_status,
