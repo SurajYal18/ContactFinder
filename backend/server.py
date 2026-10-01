@@ -60,8 +60,10 @@ class ScrapeRequest(BaseModel):
     urls: List[str] = Field(..., description="One or more university directory URLs")
     # Custom prompt guiding Gemini AI extraction
     prompt: Optional[str] = Field(default=DEFAULT_PROMPT, description="Extraction prompt for Gemini AI")
-    # Max contacts to enrich with Hunter.io
-    enrich_limit: Optional[int] = Field(default=0, description="Max contacts to enrich with Hunter.io")
+    # Email enrichment provider selection: "hunter", "rocketreach", "both", or "none"
+    enrich_provider: Optional[str] = Field(default="hunter", description="Email enrichment provider: hunter, rocketreach, both, or none")
+    # Max contacts to enrich with external APIs
+    enrich_limit: Optional[int] = Field(default=0, description="Max contacts to enrich with external APIs")
     # Custom output Excel filename
     output_filename: Optional[str] = Field(default=None, description="Optional custom output filename")
 
@@ -81,13 +83,23 @@ def deduplicate_contacts(contacts: list) -> list:
 # Health check and environment configuration endpoint
 @app.get("/api/health")
 def health_check():
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path, override=True)
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     hunter_key = os.getenv("HUNTER_API_KEY", "").strip()
+    rocketreach_key = os.getenv("ROCKETREACH_API_KEY", "").strip() or os.getenv("ROCKETSEARCH_API_KEY", "").strip()
+    enable_hunter = os.getenv("ENABLE_HUNTER", "true").lower() in ["true", "1", "yes"]
+    enable_rocketreach = (
+        os.getenv("ENABLE_ROCKETREACH", "true").lower() in ["true", "1", "yes"] and
+        os.getenv("ENABLE_ROCKETSEARCH", "true").lower() in ["true", "1", "yes"]
+    )
     return {
         "status": "online",
         "gemini_configured": bool(gemini_key),
         "hunter_configured": bool(hunter_key),
-        "enable_hunter": os.getenv("ENABLE_HUNTER", "true").lower() in ["true", "1", "yes"]
+        "enable_hunter": enable_hunter,
+        "rocketreach_configured": bool(rocketreach_key),
+        "enable_rocketreach": enable_rocketreach
     }
 
 # Main scraping and extraction endpoint
@@ -121,6 +133,7 @@ def scrape_directories(req: ScrapeRequest):
         initial_state = {
             "url": url,
             "user_prompt": req.prompt or DEFAULT_PROMPT,
+            "enrich_provider": req.enrich_provider or "hunter",
             "enrich_limit": req.enrich_limit
         }
         try:

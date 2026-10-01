@@ -63,7 +63,38 @@
           </div>
 
           <!-- Options -->
-          <div class="pt-2 border-t border-slate-800/80">
+          <div class="pt-2 border-t border-slate-800/80 space-y-4">
+            <!-- Missing Email Finder Provider Selection -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <i data-lucide="mail-search" class="w-4 h-4 text-indigo-400"></i>
+                  <span>Missing Email Finder</span>
+                </label>
+                <span class="text-xs text-slate-500">Select Provider</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <!-- Hunter Card -->
+                <div id="card-hunter" onclick="selectProvider('hunter')" class="flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/60 bg-indigo-950/20 cursor-pointer hover:border-indigo-400 transition select-none">
+                  <div class="flex items-center space-x-2.5">
+                    <input type="radio" name="enrich-provider" id="radio-hunter" value="hunter" checked class="text-indigo-600 focus:ring-0 cursor-pointer">
+                    <span class="font-semibold text-slate-100 text-sm">Hunter</span>
+                  </div>
+                  <span id="badge-hunter" class="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
+                </div>
+
+                <!-- Rocket Card -->
+                <div id="card-rocketreach" onclick="selectProvider('rocketreach')" class="flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed select-none pointer-events-none transition">
+                  <div class="flex items-center space-x-2.5">
+                    <input type="radio" name="enrich-provider" id="radio-rocketreach" value="rocketreach" disabled class="text-indigo-600 focus:ring-0 cursor-not-allowed pointer-events-none">
+                    <span class="font-semibold text-slate-400 text-sm">RocketReach</span>
+                  </div>
+                  <span id="badge-rocketreach" class="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700">Disabled</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Filename Input -->
             <div>
               <label class="block text-xs font-semibold text-slate-400 mb-1">Spreadsheet Filename (Optional)</label>
               <input type="text" id="filename-input" placeholder="contacts_export.xlsx" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -231,6 +262,7 @@
         <input type="text" id="api-url-input" value="http://127.0.0.1:8000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
         <span class="text-[11px] text-slate-500">Default local server address.</span>
       </div>
+
       <div class="pt-2 flex justify-end">
         <button onclick="saveSettings()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition">
           Save Settings
@@ -245,14 +277,22 @@
     let extractedData = [];
     let timerInterval = null;
 
+    // Feature flags loaded from backend environment health check
+    let envStatus = {
+      enable_hunter: true,
+      enable_rocketreach: true
+    };
+    let selectedProvider = "hunter";
+
     // Initialize Lucide icons on load
     document.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
       document.getElementById("api-url-input").value = API_BASE;
+      renderProviderUI();
       checkHealth();
     });
 
-    // Check backend health status
+    // Check backend health status and retrieve env true/false flags
     async function checkHealth() {
       const dot = document.getElementById("status-dot");
       const text = document.getElementById("status-text");
@@ -263,6 +303,19 @@
           dot.className = "w-2 h-2 rounded-full bg-emerald-400";
           text.textContent = "Server Online";
           addLog("Connected to server successfully.");
+
+          // Update active / disabled flags directly according to env
+          envStatus.enable_hunter = Boolean(data.enable_hunter);
+          envStatus.enable_rocketreach = Boolean(data.enable_rocketreach);
+
+          // If current selection is disabled by env, auto-switch to active provider
+          if (!envStatus.enable_hunter && selectedProvider === "hunter" && envStatus.enable_rocketreach) {
+            selectedProvider = "rocketreach";
+          } else if (!envStatus.enable_rocketreach && selectedProvider === "rocketreach" && envStatus.enable_hunter) {
+            selectedProvider = "hunter";
+          }
+
+          renderProviderUI();
         } else {
           throw new Error();
         }
@@ -270,6 +323,103 @@
         dot.className = "w-2 h-2 rounded-full bg-rose-500";
         text.textContent = "Server Offline (port 8000)";
         addLog("Cannot connect to server at " + API_BASE);
+      }
+    }
+
+    // Select provider when clicked (only allowed if active in env)
+    function selectProvider(provider) {
+      if (provider === "hunter" && !envStatus.enable_hunter) {
+        if (document.getElementById("radio-hunter")) document.getElementById("radio-hunter").checked = false;
+        return;
+      }
+      if (provider === "rocketreach" && !envStatus.enable_rocketreach) {
+        if (document.getElementById("radio-rocketreach")) document.getElementById("radio-rocketreach").checked = false;
+        if (envStatus.enable_hunter) {
+          selectedProvider = "hunter";
+          if (document.getElementById("radio-hunter")) document.getElementById("radio-hunter").checked = true;
+        }
+        renderProviderUI();
+        return;
+      }
+
+      selectedProvider = provider;
+      renderProviderUI();
+    }
+
+    // Render provider cards with Active / Disabled states according to env true/false
+    function renderProviderUI() {
+      const cardHunter = document.getElementById("card-hunter");
+      const badgeHunter = document.getElementById("badge-hunter");
+      const radioHunter = document.getElementById("radio-hunter");
+
+      const cardRocket = document.getElementById("card-rocketreach");
+      const badgeRocket = document.getElementById("badge-rocketreach");
+      const radioRocket = document.getElementById("radio-rocketreach");
+
+      if (!cardHunter || !cardRocket) return;
+
+      // Hunter badge based on env
+      if (envStatus.enable_hunter) {
+        badgeHunter.textContent = "Active";
+        badgeHunter.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        radioHunter.disabled = false;
+        radioHunter.classList.remove("pointer-events-none", "cursor-not-allowed");
+        radioHunter.classList.add("cursor-pointer");
+      } else {
+        badgeHunter.textContent = "Disabled";
+        badgeHunter.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700";
+        radioHunter.disabled = true;
+        radioHunter.checked = false;
+        radioHunter.classList.remove("cursor-pointer");
+        radioHunter.classList.add("pointer-events-none", "cursor-not-allowed");
+      }
+
+      // Rocket badge based on env
+      if (envStatus.enable_rocketreach) {
+        badgeRocket.textContent = "Active";
+        badgeRocket.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        radioRocket.disabled = false;
+        radioRocket.classList.remove("pointer-events-none", "cursor-not-allowed");
+        radioRocket.classList.add("cursor-pointer");
+      } else {
+        badgeRocket.textContent = "Disabled";
+        badgeRocket.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700";
+        radioRocket.disabled = true;
+        radioRocket.checked = false;
+        radioRocket.classList.remove("cursor-pointer");
+        radioRocket.classList.add("pointer-events-none", "cursor-not-allowed");
+      }
+
+      // Card selection styling
+      if (!envStatus.enable_hunter && !envStatus.enable_rocketreach) {
+        // Both disabled in env
+        radioHunter.checked = false;
+        radioRocket.checked = false;
+        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
+        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
+      } else if (selectedProvider === "hunter" && envStatus.enable_hunter) {
+        // Hunter chosen
+        radioHunter.checked = true;
+        radioRocket.checked = false;
+        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
+        cardRocket.className = envStatus.enable_rocketreach
+          ? "flex items-center justify-between p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition select-none"
+          : "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
+      } else if (selectedProvider === "rocketreach" && envStatus.enable_rocketreach) {
+        // Rocket chosen
+        radioHunter.checked = false;
+        radioRocket.checked = true;
+        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
+        cardHunter.className = envStatus.enable_hunter
+          ? "flex items-center justify-between p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition select-none"
+          : "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
+      } else if (envStatus.enable_hunter) {
+        // Default fallback to Hunter if RocketReach disabled
+        selectedProvider = "hunter";
+        radioHunter.checked = true;
+        radioRocket.checked = false;
+        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
+        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
       }
     }
 
@@ -333,6 +483,14 @@
       }
 
       const customFilename = document.getElementById("filename-input").value.trim();
+      
+      // Effective provider based on selection and env state
+      let effectiveProvider = "none";
+      if (selectedProvider === "hunter" && envStatus.enable_hunter) {
+        effectiveProvider = "hunter";
+      } else if (selectedProvider === "rocketreach" && envStatus.enable_rocketreach) {
+        effectiveProvider = "rocketreach";
+      }
 
       const btn = document.getElementById("scrape-btn");
       const btnText = document.getElementById("btn-text");
@@ -348,13 +506,15 @@
         timerBadge.textContent = `${seconds}s`;
       }, 1000);
 
-      addLog(`Initiating contact discovery across ${urls.length} URL(s)...`);
+      const enrichLabel = effectiveProvider === "hunter" ? "Hunter" : (effectiveProvider === "rocketreach" ? "RocketReach" : "Direct Website Only (Disabled)");
+      addLog(`Initiating contact discovery across ${urls.length} URL(s) [Email Finder: ${enrichLabel}]...`);
       setStep(1);
 
       try {
         setStep(2);
         const payload = {
           urls: urls,
+          enrich_provider: effectiveProvider,
           output_filename: customFilename || null
         };
 
@@ -476,7 +636,15 @@
           credsHtml = tokens.map(t => `<span class="badge bg-indigo-950 text-indigo-300 border border-indigo-800 mr-1 mb-1">${t}</span>`).join("");
         }
 
-        const emailHtml = c.email ? `<a href="mailto:${c.email}" class="text-sky-400 hover:underline flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 inline"></i>${c.email}</a>` : '<span class="text-slate-600">-</span>';
+        let sourceBadge = "";
+        if (c.email_source) {
+          const isHunter = c.email_source.toLowerCase().includes("hunter");
+          const isRR = c.email_source.toLowerCase().includes("rocket");
+          const badgeClass = isHunter ? "text-amber-300 bg-amber-950/70 border-amber-800" : (isRR ? "text-purple-300 bg-purple-950/70 border-purple-800" : "text-sky-300 bg-sky-950/70 border-sky-800");
+          sourceBadge = `<span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeClass} ml-1 font-mono">${c.email_source}</span>`;
+        }
+
+        const emailHtml = c.email ? `<div class="flex items-center gap-1"><a href="mailto:${c.email}" class="text-sky-400 hover:underline flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 inline"></i>${c.email}</a>${sourceBadge}</div>` : '<span class="text-slate-600">-</span>';
         const phoneHtml = c.phone ? `<a href="tel:${c.phone}" class="text-slate-300 hover:text-white flex items-center gap-1"><i data-lucide="phone" class="w-3.5 h-3.5 inline text-slate-500"></i>${c.phone}</a>` : '<span class="text-slate-600">-</span>';
 
         tr.innerHTML = `

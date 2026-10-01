@@ -21,6 +21,8 @@ class ScraperState(TypedDict, total=False):
     output_file: str
     # Final filesystem path where the Excel file was saved
     saved_path: str
+    # Target email enrichment provider (e.g. hunter, rocketreach, both, none)
+    enrich_provider: Optional[str]
     # Maximum number of contacts to enrich with external APIs
     enrich_limit: Optional[int]
     # Current status message of the pipeline execution
