@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS for instant client-side Excel export (guarantees zero-failure downloads on Vercel) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
@@ -213,10 +215,10 @@
         </div>
 
         <div class="flex items-center space-x-3">
-          <a id="download-btn" href="#" download class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition">
+          <button id="download-btn" onclick="downloadExcelSpreadsheet()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
             <span>Download Excel (.xlsx)</span>
-          </a>
+          </button>
         </div>
       </div>
 
@@ -275,6 +277,8 @@
   <script>
     let API_BASE = localStorage.getItem("faculty_scraper_api") || (window.location.protocol.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000");
     let extractedData = [];
+    let currentExportFilename = "contacts_export.xlsx";
+    let currentServerDownloadUrl = "";
     let timerInterval = null;
 
     // Feature flags loaded from backend environment health check
@@ -605,9 +609,9 @@
       document.getElementById("metric-emails").textContent = emailCount;
       document.getElementById("metric-phones").textContent = phoneCount;
 
-      // Update download link
-      const dlBtn = document.getElementById("download-btn");
-      dlBtn.href = `${API_BASE}${data.download_url}`;
+      // Update download file state
+      currentExportFilename = data.filename || "contacts_export.xlsx";
+      currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
 
       // Populate table
       populateTable(extractedData);
@@ -683,6 +687,60 @@
       });
 
       populateTable(filtered);
+    }
+
+    // Download contacts as formatted Excel workbook (.xlsx)
+    function downloadExcelSpreadsheet() {
+      if (!extractedData || extractedData.length === 0) {
+        alert("No contact records available to download.");
+        return;
+      }
+
+      // Format clean rows matching the 7 standard columns
+      const formattedRows = extractedData.map(c => ({
+        "First Name": (c.first_name || "").trim(),
+        "Last Name": (c.last_name || "").trim(),
+        "Credentials": (c.credentials || c.credential || "").trim(),
+        "Title": (c.title || "").trim(),
+        "Campus": (c.campus || "").trim(),
+        "Email": (c.email || "").trim(),
+        "Phone": (c.phone || "").trim()
+      }));
+
+      // Instant client-side Excel generation via SheetJS (bulletproof on serverless Vercel)
+      if (typeof XLSX !== "undefined") {
+        try {
+          const ws = XLSX.utils.json_to_sheet(formattedRows, {
+            header: ["First Name", "Last Name", "Credentials", "Title", "Campus", "Email", "Phone"]
+          });
+
+          // Set clean column widths
+          ws['!cols'] = [
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 18 },
+            { wch: 32 },
+            { wch: 28 },
+            { wch: 30 },
+            { wch: 18 }
+          ];
+
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Contacts");
+
+          let outName = currentExportFilename || "contacts_export.xlsx";
+          if (!outName.endsWith(".xlsx")) outName += ".xlsx";
+          XLSX.writeFile(wb, outName);
+          return;
+        } catch (err) {
+          console.warn("Client-side Excel export fallback triggered:", err);
+        }
+      }
+
+      // Fallback: Use backend download URL if SheetJS CDN is unreachable
+      if (currentServerDownloadUrl) {
+        window.location.href = currentServerDownloadUrl;
+      }
     }
   </script>
 </body>

@@ -215,8 +215,14 @@ def scrape_directories(req: ScrapeRequest):
 def download_excel(filename: str):
     # Sanitize filename against directory traversal
     clean_name = os.path.basename(filename)
-    file_path = os.path.join(EXPORTS_DIR, clean_name)
-    if not os.path.isfile(file_path):
+    candidate_paths = [
+        os.path.join(EXPORTS_DIR, clean_name),
+        os.path.join(tempfile.gettempdir(), "exports", clean_name),
+        os.path.join(tempfile.gettempdir(), clean_name),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "exports", clean_name)
+    ]
+    file_path = next((p for p in candidate_paths if os.path.isfile(p)), None)
+    if not file_path:
         raise HTTPException(status_code=404, detail="Requested spreadsheet was not found.")
     return FileResponse(
         path=file_path,
