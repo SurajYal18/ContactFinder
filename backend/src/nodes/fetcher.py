@@ -236,14 +236,169 @@ def fetch_page_content(url: str) -> str:
     if p_urls:
         html = crawl_pagination_pages(clean_url, html, p_urls)
 
-    # Check if page is an interactive form search portal like Augusta University
-    if "search.php" in html and ("Filter by Unit" in html or 'name="college"' in html):
-        search_url = urljoin(url, "search.php")
-        # Submit POST payload specifically requesting nursing unit faculty
-        post_data = {"college": "4", "first": "", "last": ""}
-        post_res = requests.post(search_url, headers=BROWSER_HEADERS, data=post_data, timeout=20)
-        if post_res.status_code == 200 and len(post_res.text) > len(html):
-            return post_res.text
+    # 1. Vanderbilt University PeopleManager AJAX directory
+    if "vanderbilt.edu" in clean_url.lower() or "js-people-directory" in html or "peoplemanager-directory" in html:
+        try:
+            vandy_api = "https://nursing.vanderbilt.edu/wp-content/themes/anchordown-futurevu-child-nursing/library/remote/peoplemanager-directory-remote-webcomm.php"
+            v_params = {
+                "option": "choose-department",
+                "school": "9",
+                "department": "all",
+                "group": "31",
+                "neighborhood": "none",
+                "person": ""
+            }
+            v_res = requests.get(vandy_api, headers=BROWSER_HEADERS, params=v_params, timeout=20, verify=False)
+            if v_res.status_code == 200:
+                v_data = v_res.json().get("data", [])
+                cards = []
+                for p in v_data:
+                    fn = p.get("full_name") or ""
+                    titles = p.get("titles") or ""
+                    em = p.get("email") or ""
+                    ph = p.get("phone") or ""
+                    office = p.get("office") or ""
+                    bio = p.get("bio") or ""
+                    cards.append(f"""
+                    <div class="faculty-card">
+                        <h3>{fn}</h3>
+                        <p>Title: {titles}</p>
+                        <p>Department: School of Nursing</p>
+                        <p>Email: <a href="mailto:{em}">{em}</a></p>
+                        <p>Phone: {ph}</p>
+                        <p>Office: {office}</p>
+                        <p>Bio: {bio[:200]}</p>
+                    </div>
+                    """)
+                if cards:
+                    html += "\n\n<!-- LOADED VANDERBILT PEOPLEMANAGER -->\n" + "\n".join(cards)
+        except Exception:
+            pass
+
+    # 2. Augusta University faculty directory search portal
+    if "augusta.edu" in clean_url.lower() or ("search.php" in html and ('name="college"' in html or "Filter by Unit" in html)):
+        try:
+            search_url = "https://www.augusta.edu/faculty/directory/search.php"
+            post_data = {"college": "4", "first": "", "last": ""}
+            post_res = requests.post(search_url, headers=BROWSER_HEADERS, data=post_data, timeout=20, verify=False)
+            if post_res.status_code == 200 and len(post_res.text) > 10000:
+                html = post_res.text
+        except Exception:
+            pass
+
+    # 3. Chattahoochee Technical College XML directory
+    if "chattahoocheetech.edu" in clean_url.lower() or "directory.xml" in html:
+        try:
+            xml_url = "https://www.chattahoocheetech.edu/_resources/data/directory/directory.xml"
+            xml_res = requests.get(xml_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
+            if xml_res.status_code == 200:
+                xml_soup = BeautifulSoup(xml_res.text, "xml")
+                rows = xml_soup.find_all("ROW")
+                cards = []
+                for row in rows:
+                    dept = row.find("Department").text if row.find("Department") else ""
+                    if "nurs" in dept.lower() or "health" in dept.lower():
+                        fn = row.find("First_Name").text if row.find("First_Name") else ""
+                        ln = row.find("Last_Name").text if row.find("Last_Name") else ""
+                        title = row.find("Job_Title").text if row.find("Job_Title") else ""
+                        em = row.find("Email_Address").text if row.find("Email_Address") else ""
+                        ph = f"{row.find('Phone_Area').text}-{row.find('Phone_Number').text}" if row.find("Phone_Area") and row.find("Phone_Number") else ""
+                        campus = row.find("Campus").text if row.find("Campus") else ""
+                        cards.append(f"""
+                        <div class="faculty-card">
+                            <h3>{fn} {ln}</h3>
+                            <p>Title: {title}</p>
+                            <p>Department: {dept}</p>
+                            <p>Email: <a href="mailto:{em}">{em}</a></p>
+                            <p>Phone: {ph}</p>
+                            <p>Campus: {campus}</p>
+                        </div>
+                        """)
+                if cards:
+                    html += "\n\n<!-- LOADED CHATTAHOOCHEE DIRECTORY XML -->\n" + "\n".join(cards)
+        except Exception:
+            pass
+
+    # 4. EssentialBlocks Pro Data Table (e.g. Gwinnett Tech)
+    if "eb-data-table" in html or "EssentialBlocksProLocalize" in html:
+        try:
+            m_post = re.search(r'data-post-id=["\']([^"\']+)["\']', html)
+            m_block = re.search(r'data-block-id=["\']([^"\']+)["\']', html)
+            m_nonce = re.search(r'["\']data_table_nonce["\']\s*:\s*["\']([^"\']+)["\']', html)
+            m_ajax = re.search(r'["\']ajax_url["\']\s*:\s*["\']([^"\']+)["\']', html)
+            if m_post and m_block:
+                post_id = m_post.group(1)
+                block_id = m_block.group(1)
+                nonce = m_nonce.group(1) if m_nonce else ""
+                ajax_url = m_ajax.group(1).replace(r"\/", "/") if m_ajax else urljoin(clean_url, "/wp-admin/admin-ajax.php")
+                post_payload = {
+                    "action": "eb_data_table_post_meta",
+                    "data_table_nonce": nonce,
+                    "post_id": post_id,
+                    "block_id": block_id
+                }
+                eb_res = requests.post(ajax_url, headers=BROWSER_HEADERS, data=post_payload, timeout=20, verify=False)
+                if eb_res.status_code == 200:
+                    eb_data = eb_res.json().get("data", {}).get(block_id, {})
+                    rows = eb_data.get("rows", [])
+                    cards = []
+                    for row in rows:
+                        row_str = " ".join(str(cell) for cell in row)
+                        if "nurs" in row_str.lower() or "health" in row_str.lower():
+                            em = next((str(c) for c in row if "@" in str(c)), "")
+                            ph = next((str(c) for c in row if re.search(r'\d{3}[-.\s]\d{3}', str(c))), "")
+                            name = f"{row[0]} {row[1]}" if len(row) >= 2 else str(row[0])
+                            title = str(row[2]) if len(row) >= 3 else ""
+                            dept = str(row[5]) if len(row) >= 6 else ""
+                            cards.append(f"""
+                            <div class="faculty-card">
+                                <h3>{name}</h3>
+                                <p>Title: {title}</p>
+                                <p>Department: {dept}</p>
+                                <p>Email: <a href="mailto:{em}">{em}</a></p>
+                                <p>Phone: {ph}</p>
+                            </div>
+                            """)
+                    if cards:
+                        html += "\n\n<!-- LOADED ESSENTIALBLOCKS DATA TABLE -->\n" + "\n".join(cards)
+        except Exception:
+            pass
+
+    # 5. West Georgia Technical College School of Nursing
+    if "westgatech.edu" in clean_url.lower():
+        try:
+            w_url = "https://www.westgatech.edu/department/school-of-nursing/"
+            w_res = requests.get(w_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
+            if w_res.status_code == 200 and len(w_res.text) > 5000:
+                html += "\n\n<!-- LOADED WGTC NURSING DEPARTMENT -->\n" + w_res.text
+        except Exception:
+            pass
+
+    # 6. Ogeechee Technical College Nursing faculty page
+    if "ogeecheetech.edu" in clean_url.lower():
+        try:
+            o_url = "https://www.ogeecheetech.edu/academics/nursing"
+            o_res = requests.get(o_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
+            if o_res.status_code == 200 and len(o_res.text) > 5000:
+                html += "\n\n<!-- LOADED OGEECHEE NURSING DEPARTMENT -->\n" + o_res.text
+        except Exception:
+            pass
+
+    # 7. College of Coastal Georgia Directory
+    if "ccga.edu" in clean_url.lower() and "/about/directory" not in clean_url.lower():
+        try:
+            c_url = "https://www.ccga.edu/about/directory/"
+            c_res = requests.get(c_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
+            if c_res.status_code == 200 and len(c_res.text) > 10000:
+                html = c_res.text
+        except Exception:
+            pass
+
+    # 8. Detect portal-gated private institutions (Chamberlain, Herzing, South University)
+    if any(d in clean_url.lower() for d in ["chamberlain.edu", "herzing.edu", "southuniversity.edu"]):
+        emails_check = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', html)
+        if not emails_check or all(any(t in e.lower() for t in ["info@", "support@", "admin@", "admissions@", "inputmask", "transcripts@"]) for e in emails_check):
+            raise RuntimeError("Portal-Gated Directory: This institution does not publish a public faculty directory. Faculty contact info is gated behind their internal portal (Canvas / Brightspace / MyChamberlain).")
 
     # Check if page is a dynamic AJAX provider directory (e.g., GNTC)
     if "pf_provider_list" in html or "wp-json/custom/v1/providers/list" in html:
@@ -335,11 +490,25 @@ def fetch_page_content(url: str) -> str:
 # Resolves the university or institutional name from the domain or page metadata
 def get_university_name(domain: str, html: str = "") -> str:
     known_unis = {
+        "vanderbilt.edu": "Vanderbilt University",
+        "augusta.edu": "Augusta University",
+        "ccga.edu": "College of Coastal Georgia",
+        "chattahoocheetech.edu": "Chattahoochee Technical College",
+        "gwinnetttech.edu": "Gwinnett Technical College",
+        "westgatech.edu": "West Georgia Technical College",
+        "ogeecheetech.edu": "Ogeechee Technical College",
+        "centralgatech.edu": "Central Georgia Technical College",
+        "northgatech.edu": "North Georgia Technical College",
+        "laniertech.edu": "Lanier Technical College",
+        "albanytech.edu": "Albany Technical College",
+        "coastalpines.edu": "Coastal Pines Technical College",
+        "southeasterntech.edu": "Southeastern Technical College",
+        "southernregionaltech.edu": "Southern Regional Technical College",
+        "wiregrass.edu": "Wiregrass Georgia Technical College",
         "lagrange.edu": "LaGrange College",
         "gntc.edu": "Georgia Northwestern Technical College",
         "asurams.edu": "Albany State University",
         "georgiasouthern.edu": "Georgia Southern University",
-        "augusta.edu": "Augusta University",
         "uga.edu": "University of Georgia",
         "gsu.edu": "Georgia State University",
         "kennesaw.edu": "Kennesaw State University",
@@ -350,11 +519,19 @@ def get_university_name(domain: str, html: str = "") -> str:
         "westga.edu": "University of West Georgia",
         "gcsu.edu": "Georgia College & State University",
         "emory.edu": "Emory University",
-        "mercer.edu": "Mercer University"
+        "mercer.edu": "Mercer University",
+        "brenau.edu": "Brenau University",
+        "averett.edu": "Averett University",
+        "south.edu": "South College",
+        "southuniversity.edu": "South University",
+        "chamberlain.edu": "Chamberlain University",
+        "herzing.edu": "Herzing University",
+        "jhu.edu": "Johns Hopkins University",
+        "umich.edu": "University of Michigan"
     }
     clean_domain = domain.replace("www.", "").lower()
     for k, v in known_unis.items():
-        if k in clean_domain:
+        if clean_domain == k or clean_domain.endswith("." + k):
             return v
 
     # Extract university name from title tag if available
@@ -492,10 +669,12 @@ def fetch_node(state: ScraperState) -> ScraperState:
             # Sanitize HTML into clean readable text
             clean_text = sanitize_raw_html(processed_html)
 
-            # Always crawl individual faculty profile bio pages if candidate links exist
-            profiles_text = crawl_faculty_profiles(url, raw_html)
-            if profiles_text:
-                clean_text += "\n\n=== INDIVIDUAL FACULTY PROFILE BIO PAGES ===\n\n" + profiles_text
+            # Crawl individual faculty profile bio pages if direct dynamic feeds were not already loaded
+            has_dynamic_feed = any(m in raw_html for m in ["LOADED VANDERBILT", "LOADED CHATTAHOOCHEE", "LOADED ESSENTIALBLOCKS", "LOADED WGTC", "LOADED OGEECHEE", "LOADED DYNAMIC JSON FEED"])
+            if not has_dynamic_feed:
+                profiles_text = crawl_faculty_profiles(url, raw_html)
+                if profiles_text:
+                    clean_text += "\n\n=== INDIVIDUAL FACULTY PROFILE BIO PAGES ===\n\n" + profiles_text
 
         return {
             "raw_html": raw_html,

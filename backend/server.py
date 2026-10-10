@@ -7,7 +7,7 @@ from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -378,13 +378,11 @@ def download_excel(filename: str):
         filename=clean_name
     )
 
-# Frontend web UI directory path
+# Frontend web UI directory paths
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
 
 # Serve index.html with strict no-cache headers so browsers always load fresh JS
-from fastapi.responses import HTMLResponse
-
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
 def serve_index():
@@ -410,3 +408,4 @@ if __name__ == "__main__":
     import uvicorn
     # Start ASGI web server on port 8000
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+

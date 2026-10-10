@@ -33,6 +33,7 @@
           <p class="text-xs text-slate-400">Automated Contact & Email Discovery</p>
         </div>
       </div>
+
       <div class="flex items-center space-x-4">
         <div id="backend-status" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
           <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="status-dot"></span>
@@ -59,7 +60,14 @@
               <i data-lucide="globe" class="w-5 h-5 text-indigo-400"></i>
               <h2 class="font-semibold text-slate-100">Contact URLs</h2>
             </div>
-            <span class="text-xs text-slate-400">Enter multiple URLs (comma or new line separated)</span>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-slate-400 hidden sm:inline">Separate with commas or newlines</span>
+              <span class="text-slate-700 text-xs hidden sm:inline">•</span>
+              <button type="button" onclick="clearAll()" class="text-xs text-slate-400 hover:text-rose-400 font-medium transition flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-950/60 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/60 cursor-pointer" title="Clear all inputs, results, metrics, and logs">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Clear All</span>
+              </button>
+            </div>
           </div>
 
           <!-- URL Inputs -->
@@ -233,6 +241,10 @@
         </div>
 
         <div class="flex items-center space-x-3">
+          <button id="clear-results-btn" onclick="clearAll()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm border border-slate-700 hover:border-rose-900/60 hover:text-rose-400 transition flex items-center space-x-1.5 cursor-pointer" title="Clear results and start a new extraction">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            <span>New Request / Clear</span>
+          </button>
           <button id="download-btn" onclick="downloadExcelSpreadsheet()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
             <span>Download Excel (.xlsx)</span>
@@ -320,6 +332,20 @@
       if (apiInput) apiInput.value = API_BASE;
       renderProviderUI();
       checkHealth();
+
+      // Check for transferred URLs from Directory Finder
+      const incomingUrls = localStorage.getItem("contactfinder_incoming_urls");
+      if (incomingUrls && incomingUrls.trim()) {
+        const urlsInput = document.getElementById("urls-input");
+        if (urlsInput) {
+          urlsInput.value = incomingUrls.trim();
+          localStorage.removeItem("contactfinder_incoming_urls");
+          const count = incomingUrls.trim().split('\n').filter(Boolean).length;
+          setTimeout(() => {
+            alert(`✓ Successfully imported ${count} verified Faculty Directory URLs from Directory Finder!\n\nClick "Start Extraction" to extract all faculty contacts.`);
+          }, 350);
+        }
+      }
     }
 
     if (document.readyState === "loading") {
@@ -479,6 +505,108 @@
       localStorage.setItem("faculty_scraper_api", API_BASE);
       toggleSettingsModal();
       checkHealth();
+    }
+
+    // Toast notification helper
+    function showToast(message) {
+      let toast = document.getElementById("app-toast");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "app-toast";
+        toast.className = "fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 text-xs font-medium shadow-2xl transition-all duration-300 transform translate-y-8 opacity-0 pointer-events-none";
+        document.body.appendChild(toast);
+      }
+      toast.textContent = message;
+      toast.classList.remove("translate-y-8", "opacity-0");
+      setTimeout(() => {
+        toast.classList.add("translate-y-8", "opacity-0");
+      }, 3000);
+    }
+
+    // Clear all inputs, previous extraction results, metrics, and logs for a fresh request
+    function clearAll() {
+      // 1. Clear textareas and inputs
+      const urlsInput = document.getElementById("urls-input");
+      if (urlsInput) urlsInput.value = "";
+      const filenameInput = document.getElementById("filename-input");
+      if (filenameInput) filenameInput.value = "";
+      const tableSearch = document.getElementById("table-search");
+      if (tableSearch) tableSearch.value = "";
+
+      // 2. Clear state variables
+      extractedData = [];
+      currentExportFilename = "contacts_export.xlsx";
+      currentServerDownloadUrl = "";
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+
+      // 3. Reset Stepper & Timer Badge
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        if (el) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition";
+          const icon = el.querySelector(".step-icon");
+          if (icon) {
+            icon.className = "step-icon w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold";
+            icon.innerHTML = i;
+          }
+        }
+      }
+
+      const timerBadge = document.getElementById("timer-badge");
+      if (timerBadge) {
+        timerBadge.textContent = "Idle";
+        timerBadge.className = "badge bg-slate-800 text-slate-400 border border-slate-700";
+      }
+
+      // 4. Reset Action Button
+      const btn = document.getElementById("scrape-btn");
+      const btnText = document.getElementById("btn-text");
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+      }
+      if (btnText) btnText.textContent = "Find Contacts & Export Excel";
+
+      // 5. Reset Activity Log Box
+      const logBox = document.getElementById("log-box");
+      if (logBox) {
+        logBox.innerHTML = '<p class="text-slate-600">// Ready. Enter contact URLs and click Find Contacts.</p>';
+      }
+
+      // 6. Hide and Reset Results Section
+      const resultsSection = document.getElementById("results-section");
+      if (resultsSection) resultsSection.classList.add("hidden");
+
+      const tableBody = document.getElementById("table-body");
+      if (tableBody) tableBody.innerHTML = "";
+
+      const filteredCount = document.getElementById("filtered-count");
+      if (filteredCount) filteredCount.textContent = "Showing 0 contacts";
+
+      // Reset metrics
+      ["metric-total", "metric-unique", "metric-success-links", "metric-failed-links", "metric-emails", "metric-phones"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "0";
+      });
+
+      // Hide failed URLs summary card and drawer
+      const summaryCard = document.getElementById("failed-urls-summary-card");
+      if (summaryCard) summaryCard.classList.add("hidden");
+      const drawer = document.getElementById("failed-urls-drawer");
+      if (drawer) {
+        drawer.innerHTML = "";
+        drawer.classList.add("hidden");
+      }
+
+      // Refresh Lucide icons if available
+      if (window.lucide && typeof lucide.createIcons === "function") {
+        lucide.createIcons();
+      }
+
+      showToast("✓ Everything cleared. Ready for a new request.");
     }
 
     // Logging helper
