@@ -4,7 +4,10 @@ from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import urllib3
-import pypdf
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 from bs4 import BeautifulSoup
 from src.state import ScraperState
 
@@ -199,6 +202,8 @@ def fetch_page_content(url: str) -> str:
     # Check if document is a PDF
     content_type = res.headers.get("Content-Type", "").lower()
     if "application/pdf" in content_type or clean_url.lower().endswith(".pdf"):
+        if pypdf is None:
+            raise RuntimeError("PDF documents are not supported: pypdf library is not installed.")
         try:
             reader = pypdf.PdfReader(io.BytesIO(res.content))
             pages_text = []
