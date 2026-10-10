@@ -4,6 +4,7 @@ import re
 import sys
 import uuid
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -15,15 +16,22 @@ from dotenv import load_dotenv
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
+# Ensure backend directory is in sys.path for local and serverless execution
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 # Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+dotenv_path = os.path.join(backend_dir, ".env")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path)
 else:
     load_dotenv()
 
 # Import LangGraph workflow and helper functions
+from urllib.parse import urlparse
 from src.workflow import create_scraper_graph
+from src.nodes.fetcher import get_university_name
 from src.nodes.exporter import export_contacts_to_excel
 
 # Create FastAPI application instance
@@ -52,7 +60,7 @@ else:
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # Default extraction prompt
-DEFAULT_PROMPT = "create an excel file of nursing faculty - include first name, last name, credentials, title, campus, email and phone"
+DEFAULT_PROMPT = "create an excel file of nursing faculty - include school, first name, last name, title, credentials, email, phone, and campus"
 
 # Pydantic schema for scraping request payload
 class ScrapeRequest(BaseModel):
@@ -74,8 +82,9 @@ def deduplicate_contacts(contacts: list) -> list:
     for c in contacts:
         fn = str(c.get("first_name", "")).strip().lower()
         ln = str(c.get("last_name", "")).strip().lower()
-        key = f"{fn}_{ln}"
-        if key not in seen and key != "_":
+        school = str(c.get("school", "")).strip().lower()
+        key = f"{school}_{fn}_{ln}"
+        if key not in seen and f"{fn}_{ln}" != "_":
             seen.add(key)
             deduped.append(c)
     return deduped
@@ -102,11 +111,135 @@ def health_check():
         "enable_rocketreach": enable_rocketreach
     }
 
+# Maximum simultaneous requests for scraping and Gemini AI extraction
+MAX_CONCURRENT_REQUESTS = 5
+
+# Processes a single directory URL through the LangGraph StateGraph pipeline
+def process_single_url(url: str, prompt: str, enrich_provider: str, enrich_limit: Optional[int], compiled_graph) -> dict:
+    domain = urlparse(url).netloc.lower()
+    fallback_school = get_university_name(domain)
+
+    initial_state = {
+        "url": url,
+        "user_prompt": prompt or DEFAULT_PROMPT,
+        "enrich_provider": enrich_provider or "hunter",
+        "enrich_limit": enrich_limit
+    }
+    try:
+        final_state = compiled_graph.invoke(initial_state)
+        university = final_state.get("university", "").strip() or fallback_school
+
+        if final_state.get("error"):
+            err_msg = str(final_state["error"])
+            if "403" in err_msg or "cloudflare" in err_msg.lower() or "access blocked" in err_msg.lower():
+                reason = "Cloudflare Protected (HTTP 403)"
+                clean_msg = "Access blocked by Cloudflare bot protection."
+                status_type = "blocked"
+            elif "pdf documents are not supported" in err_msg.lower() or url.lower().endswith(".pdf"):
+                reason = "PDF Document (Not have email and phone number)"
+                clean_msg = "PDF extraction is disabled. Please provide a web faculty directory page instead."
+                status_type = "pdf_unsupported"
+            elif "timeout" in err_msg.lower() or "timed out" in err_msg.lower():
+                reason = "Connection Timeout"
+                clean_msg = "Server took too long to respond or blocked automated connection."
+                status_type = "timeout"
+            elif "ssl" in err_msg.lower() or "certificate" in err_msg.lower():
+                reason = "SSL Certificate Error"
+                clean_msg = "Website has an invalid or expired SSL certificate."
+                status_type = "ssl_error"
+            else:
+                reason = "Fetch Error"
+                clean_msg = err_msg
+                status_type = "error"
+
+            entry = {
+                "url": url,
+                "school": university,
+                "status": status_type,
+                "reason": reason,
+                "message": clean_msg,
+                "error": err_msg
+            }
+            return {"contacts": [], "entry": entry, "is_success": False}
+
+        extracted = final_state.get("contacts", [])
+        for c in extracted:
+            if not c.get("school"):
+                c["school"] = university or ""
+
+        if len(extracted) == 0:
+            parsed_p = urlparse(url).path.strip("/")
+            if not parsed_p:
+                reason = "Homepage (Not a Directory)"
+                clean_msg = "This URL points to the university homepage rather than a faculty directory."
+            elif url.lower().endswith(".pdf"):
+                reason = "PDF (No Nursing Contacts)"
+                clean_msg = "PDF document parsed but contained no nursing faculty."
+            else:
+                reason = "No Nursing Faculty Found"
+                clean_msg = "No nursing faculty or staff contacts were found on this directory page."
+
+            entry = {
+                "url": url,
+                "school": university,
+                "status": "no_contacts",
+                "reason": reason,
+                "message": clean_msg,
+                "university": university,
+                "count": 0
+            }
+            return {"contacts": [], "entry": entry, "is_success": False}
+        else:
+            entry = {
+                "url": url,
+                "school": university,
+                "status": "success",
+                "reason": None,
+                "message": f"Found {len(extracted)} nursing contacts.",
+                "university": university,
+                "count": len(extracted)
+            }
+            return {"contacts": extracted, "entry": entry, "is_success": True}
+
+    except Exception as e:
+        err_msg = str(e)
+        if "403" in err_msg or "cloudflare" in err_msg.lower() or "access blocked" in err_msg.lower():
+            reason = "Cloudflare Protected (HTTP 403)"
+            clean_msg = "Access blocked by Cloudflare bot protection."
+            status_type = "blocked"
+        elif "pdf documents are not supported" in err_msg.lower() or url.lower().endswith(".pdf"):
+            reason = "PDF Document (Not have email and phone number)"
+            clean_msg = "PDF extraction is disabled. Please provide a web faculty directory page instead."
+            status_type = "pdf_unsupported"
+        elif "timeout" in err_msg.lower() or "timed out" in err_msg.lower():
+            reason = "Connection Timeout"
+            clean_msg = "Connection timed out."
+            status_type = "timeout"
+        else:
+            reason = "Failed to Process"
+            clean_msg = err_msg
+            status_type = "exception"
+
+        entry = {
+            "url": url,
+            "school": fallback_school,
+            "status": status_type,
+            "reason": reason,
+            "message": clean_msg,
+            "error": err_msg
+        }
+        return {"contacts": [], "entry": entry, "is_success": False}
+
 # Main scraping and extraction endpoint
 @app.post("/api/scrape")
 def scrape_directories(req: ScrapeRequest):
     if not req.urls:
         raise HTTPException(status_code=400, detail="At least one URL must be provided.")
+
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path, override=True)
+    else:
+        load_dotenv(override=True)
 
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not gemini_key:
@@ -117,8 +250,12 @@ def scrape_directories(req: ScrapeRequest):
     for u in req.urls:
         for sub in u.split(","):
             sub = sub.strip()
-            if sub and sub.startswith("http"):
-                cleaned_urls.append(sub)
+            m = re.search(r'https?://[^\s"\'\]\)>]+', sub)
+            if m:
+                clean_link = m.group(0).rstrip('"\'.,;:)')
+                cleaned_urls.append(clean_link)
+            elif sub.startswith("http"):
+                cleaned_urls.append(sub.strip().strip('"\'[]<>'))
 
     if not cleaned_urls:
         raise HTTPException(status_code=400, detail="No valid HTTP/HTTPS URLs found in request.")
@@ -126,52 +263,61 @@ def scrape_directories(req: ScrapeRequest):
     # Compile the LangGraph pipeline
     compiled_graph = create_scraper_graph()
     all_contacts = []
-    url_logs = []
+    completed_results = []
+    effective_workers = min(MAX_CONCURRENT_REQUESTS, len(cleaned_urls))
 
-    # Process each URL through the LangGraph StateGraph
-    for idx, url in enumerate(cleaned_urls, 1):
-        initial_state = {
-            "url": url,
-            "user_prompt": req.prompt or DEFAULT_PROMPT,
-            "enrich_provider": req.enrich_provider or "hunter",
-            "enrich_limit": req.enrich_limit
+    # Process up to 5 URLs concurrently through the LangGraph StateGraph pipeline
+    with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+        future_to_idx = {
+            executor.submit(
+                process_single_url,
+                url,
+                req.prompt or DEFAULT_PROMPT,
+                req.enrich_provider or "hunter",
+                req.enrich_limit,
+                compiled_graph
+            ): idx
+            for idx, url in enumerate(cleaned_urls)
         }
-        try:
-            final_state = compiled_graph.invoke(initial_state)
-            if final_state.get("error"):
-                err_msg = str(final_state["error"])
-                if "403" in err_msg or "cloudflare" in err_msg.lower():
-                    clean_msg = "Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden)."
-                    url_logs.append({"url": url, "status": "blocked", "message": clean_msg, "error": err_msg})
-                else:
-                    url_logs.append({"url": url, "status": "error", "message": err_msg})
-                continue
 
-            extracted = final_state.get("contacts", [])
-            all_contacts.extend(extracted)
-            if len(extracted) == 0:
-                url_logs.append({
-                    "url": url,
-                    "status": "no_contacts",
-                    "message": "No nursing faculty or staff contacts were found for this directory URL.",
-                    "university": final_state.get("university", ""),
-                    "count": 0
-                })
-            else:
-                url_logs.append({
-                    "url": url,
-                    "status": "success",
-                    "message": f"Found {len(extracted)} nursing contacts.",
-                    "university": final_state.get("university", ""),
-                    "count": len(extracted)
-                })
-        except Exception as e:
-            err_msg = str(e)
-            if "403" in err_msg or "cloudflare" in err_msg.lower():
-                clean_msg = "Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden)."
-                url_logs.append({"url": url, "status": "blocked", "message": clean_msg, "error": err_msg})
-            else:
-                url_logs.append({"url": url, "status": "exception", "message": err_msg})
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                res = future.result()
+                completed_results.append((idx, res))
+            except Exception as e:
+                err_msg = str(e)
+                domain = urlparse(cleaned_urls[idx]).netloc.lower()
+                fallback_school = get_university_name(domain)
+                completed_results.append((idx, {
+                    "contacts": [],
+                    "entry": {
+                        "url": cleaned_urls[idx],
+                        "school": fallback_school,
+                        "status": "exception",
+                        "reason": "Failed to Process",
+                        "message": err_msg,
+                        "error": err_msg
+                    },
+                    "is_success": False
+                }))
+
+    # Sort results to preserve the original URL request order in logs
+    completed_results.sort(key=lambda x: x[0])
+
+    url_logs = []
+    failed_urls = []
+    successful_urls = []
+    for _, item in completed_results:
+        contacts = item.get("contacts", [])
+        if contacts:
+            all_contacts.extend(contacts)
+        entry = item.get("entry", {})
+        url_logs.append(entry)
+        if item.get("is_success"):
+            successful_urls.append(entry)
+        else:
+            failed_urls.append(entry)
 
     # Deduplicate accumulated contacts
     unique_contacts = deduplicate_contacts(all_contacts)
@@ -207,7 +353,9 @@ def scrape_directories(req: ScrapeRequest):
         "contacts": unique_contacts,
         "filename": base_name,
         "download_url": f"/api/download/{base_name}",
-        "url_logs": url_logs
+        "url_logs": url_logs,
+        "failed_urls": failed_urls,
+        "successful_urls": successful_urls
     }
 
 # Endpoint to download generated Excel spreadsheet
@@ -232,10 +380,30 @@ def download_excel(filename: str):
 
 # Frontend web UI directory path
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
 
-# Mount frontend static single page application if directory exists
+# Serve index.html with strict no-cache headers so browsers always load fresh JS
+from fastapi.responses import HTMLResponse
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
+def serve_index():
+    if os.path.isfile(INDEX_HTML):
+        with open(INDEX_HTML, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+    raise HTTPException(status_code=404, detail="Frontend not found")
+
+# Mount any other static assets (images, icons etc.) from the frontend folder
 if os.path.isdir(FRONTEND_DIR):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="frontend_static")
 
 # Direct execution runner
 if __name__ == "__main__":

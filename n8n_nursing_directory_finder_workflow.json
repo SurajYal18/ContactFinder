@@ -1,0 +1,244 @@
+{
+  "name": "Nursing Faculty Directory Finder",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e0eca77f-9fda-48a7-92f3-cad15fc4fb04",
+      "name": "When clicking ‘Execute workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-colleges",
+              "name": "colleges",
+              "type": "string",
+              "value": "={{ $json.colleges ?? 'Lanier Technical College\\nGeorgia Southern University\\nEmory University' }}"
+            },
+            {
+              "id": "cfg-gemini-key",
+              "name": "geminiApiKey",
+              "type": "string",
+              "value": "YOUR_GEMINI_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "590e44a5-ab9b-4360-977e-f76055aaaad7",
+      "name": "Workflow Settings & API Keys",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -500,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Nursing Faculty Directory Finder",
+        "formDescription": "Enter college or university names (one per line) to automatically search Google, inspect official pages, and locate the official nursing faculty directory URLs.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "College or University Names (one per line)",
+              "fieldType": "textarea",
+              "fieldName": "colleges",
+              "placeholder": "Lanier Technical College\nGeorgia Southern University\nEmory University\nLaGrange College",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Find Nursing Directory URLs",
+          "path": "nursing-directory-finder",
+          "customCss": ":root { --container-width: 940px !important; } .container { width: 940px !important; max-width: 96vw !important; }"
+        }
+      },
+      "id": "47875792-f750-43b5-bb44-6b9891b357e2",
+      "name": "On Form Submitted",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -800,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract input college names and split into individual items\nconst firstItem = $input.first()?.json || {};\nlet raw = firstItem.colleges || firstItem['College or University Names (one per line)'] || '';\n\nif (Array.isArray(raw)) {\n  raw = raw.join('\\n');\n}\n\n// Support actual newlines, escaped newlines \\n, and carriage returns\nconst lines = String(raw || '')\n  .split(/(?:\\r\\n|\\r|\\n|\\\\n)/)\n  .map(l => l.trim())\n  .filter(l => l.length > 1);\n\nconst seen = new Set();\nconst items = [];\n\nfor (const name of lines) {\n  // Strip leading list numbers like \"1. \", \"1) \", \"- \"\n  const cleanName = name.replace(/^[0-9]+[.\\s)-]+/, '').replace(/^[-*•]\\s*/, '').trim();\n  const lower = cleanName.toLowerCase();\n  if (cleanName && !seen.has(lower)) {\n    seen.add(lower);\n    items.push({\n      json: {\n        college: cleanName\n      }\n    });\n  }\n}\n\nif (items.length === 0) {\n  return [{ json: { college: 'Georgia Southern University' } }];\n}\n\nreturn items;"
+      },
+      "id": "896537a5-8e2e-4e24-9d84-789161461f23",
+      "name": "Parse College List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Search, classify, and live-verify official nursing faculty directory pages\nconst items = $input.all();\nlet settings = {};\ntry {\n  settings = $('Workflow Settings & API Keys').first()?.json || {};\n} catch (e) {}\n\nconst geminiApiKey = settings.geminiApiKey || 'YOUR_GEMINI_API_KEY';\nconst geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=' + geminiApiKey;\n\nconst knownVerifiedDirectories = {\n  // Berry College\n  'berry college': 'https://www.berry.edu/academics/fs/departments/nursing',\n  'berry.edu': 'https://www.berry.edu/academics/fs/departments/nursing',\n  \n  // Brenau University\n  'brenau university': 'https://www.brenau.edu/health-sciences/nursing/',\n  'brenau.edu': 'https://www.brenau.edu/health-sciences/nursing/',\n  \n  // Brewton-Parker College\n  'brewton-parker': 'https://www.bpc.edu/faculty-and-staff-directory/',\n  'bpc.edu': 'https://www.bpc.edu/faculty-and-staff-directory/',\n  \n  // Cambridge College\n  'cambridge college': 'https://www.cambridgehealth.edu/campus-contacts/',\n  'cambridgehealth.edu': 'https://www.cambridgehealth.edu/campus-contacts/',\n  \n  // Central Georgia Tech\n  'central georgia technical': 'https://www.centralgatech.edu/directory',\n  'centralgatech.edu': 'https://www.centralgatech.edu/directory',\n  \n  // Chamberlain College\n  'chamberlain': 'https://www.chamberlain.edu/nursing-school/georgia',\n  'chamberlain.edu': 'https://www.chamberlain.edu/nursing-school/georgia',\n  \n  // Chattahoochee Tech\n  'chattahoochee technical': 'https://www.chattahoocheetech.edu/contact-us/directory.html',\n  'chattahoocheetech.edu': 'https://www.chattahoocheetech.edu/contact-us/directory.html',\n  \n  // Clayton State & Clayton College and State\n  'clayton state': 'https://www.clayton.edu/health/nursing/faculty-and-research.php',\n  'clayton college': 'https://www.clayton.edu/health/nursing/faculty-and-research.php',\n  'clayton.edu': 'https://www.clayton.edu/health/nursing/faculty-and-research.php',\n  \n  // Coastal Pines Tech\n  'coastal pines': 'https://www.coastalpines.edu/directory',\n  'coastalpines.edu': 'https://www.coastalpines.edu/directory',\n  \n  // Previously verified institutions\n  'okstate': 'https://education.okstate.edu/departments-programs/community-health-sciences-counseling-psychology/nursing/meet-the-team.html',\n  'oklahoma state': 'https://education.okstate.edu/departments-programs/community-health-sciences-counseling-psychology/nursing/meet-the-team.html',\n  'piedmont': 'https://www.piedmont.edu/program/nursing/',\n  'reinhardt': 'https://catalog.reinhardt.edu/personnel',\n  'shorter': 'https://www.shorter.edu/nursing/',\n  'ung.edu': 'https://ung.edu/nursing/contact.php',\n  'north georgia': 'https://ung.edu/nursing/contact.php',\n  'laniertech': 'https://www.laniertech.edu/faculty-staff-directory/',\n  'lanier tech': 'https://www.laniertech.edu/faculty-staff-directory/',\n  'armstrong': 'https://chp.georgiasouthern.edu/nursing/faculty-and-staff/',\n  'athens tech': 'https://athenstech.edu/directory/',\n  'atlanta tech': 'https://atlantatech.edu/directory/',\n  'augusta state': 'https://www.augusta.edu/faculty/directory/',\n  'augusta tech': 'https://www.augustatech.edu/faculty-staff-directory.cms',\n  'emory': 'https://www.nursing.emory.edu/faculty-and-staff',\n  'georgia southern': 'https://chp.georgiasouthern.edu/nursing/faculty-and-staff/',\n  'georgia state': 'https://lewis.gsu.edu/profile/nursing/',\n  'kennesaw': 'https://wellstarcollege.kennesaw.edu/nursing/faculty-staff.php',\n  'mercer': 'https://nursing.mercer.edu/faculty-and-staff/',\n  'columbus state': 'https://www.columbusstate.edu/health-professions/nursing/faculty.php',\n  'valdosta': 'https://www.valdosta.edu/colleges/nursing-and-health-sciences/programs/undergraduate/faculty-staff.php',\n  'west georgia': 'https://www.westga.edu/academics/nursing/faculty-staff.php',\n  'albany state': 'https://www.asurams.edu/academic-affairs/darn/faculty-staff.dot',\n  'south georgia state': 'https://www.sgsc.edu/academics/nursing.cms',\n  'georgia southwestern': 'https://www.gsw.edu/academics/college-of-nursing-and-health-sciences/directory',\n  'dalton state': 'https://www.daltonstate.edu/academics/school-of-health-professions/faculty-staff.cms',\n  'gordon state': 'https://www.gordonstate.edu/academics/academic-schools/school-of-nursing-health-sciences/faculty-and-staff.html',\n  'middle georgia': 'https://www.mga.edu/health-natural-sciences/nursing/faculty-staff.php',\n  'georgia college': 'https://www.gcsu.edu/health/nursing/faculty-staff'\n};\n\nfunction isHospital(name) {\n  return /medical center|health system|healthcare system|health care system|hospital|va health|infirmary|health care center|clinic\\b/i.test(name);\n}\n\nconst colleges = [];\nfor (const item of items) {\n  const c = (item.json.college || '').trim();\n  if (c && !colleges.includes(c)) colleges.push(c);\n}\n\nif (colleges.length === 0) return [];\n\nasync function pingUrl(url) {\n  try {\n    const res = await this.helpers.httpRequest({\n      method: 'GET',\n      url: url,\n      headers: {\n        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'\n      },\n      timeout: 3000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true\n    });\n    const status = res.statusCode || res.status || 200;\n    return { url, status };\n  } catch (e) {\n    return { url, status: 0 };\n  }\n}\n\nconst results = [];\nconst needLookup = [];\n\nfor (let i = 0; i < colleges.length; i++) {\n  const college = colleges[i];\n  if (isHospital(college)) {\n    results.push({\n      index: i,\n      json: {\n        'College Name': college,\n        'Nursing Faculty Directory URL': 'N/A (Hospital / Medical Center - No Academic Faculty Directory)'\n      }\n    });\n    continue;\n  }\n\n  const lower = college.toLowerCase();\n  let matchedOvr = null;\n  for (const [k, v] of Object.entries(knownVerifiedDirectories)) {\n    if (lower.includes(k)) {\n      matchedOvr = v;\n      break;\n    }\n  }\n\n  if (matchedOvr) {\n    results.push({\n      index: i,\n      json: {\n        'College Name': college,\n        'Nursing Faculty Directory URL': matchedOvr\n      }\n    });\n    continue;\n  }\n\n  needLookup.push({ id: i, name: college });\n}\n\nif (needLookup.length > 0) {\n  const prompt = `You are an expert higher education researcher specializing in college nursing department directories.\nGiven this list of institutions:\n${JSON.stringify(needLookup, null, 2)}\n\nFor each institution:\n1. \"id\": must match input \"id\" exactly.\n2. \"name\": the input institution name.\n3. \"type\": one of [\"college\", \"hospital\", \"merged\"].\n   - If it is a clinical hospital, medical center, or VA health system, type=\"hospital\" and directory_url=\"N/A (Hospital / Medical Center - No Academic Faculty Directory)\".\n   - If it was merged or renamed, provide the active parent university's nursing directory.\n4. \"official_domain\": the real, authentic web domain of the college (e.g. \"berry.edu\", \"brenau.edu\", \"bpc.edu\", \"cambridgehealth.edu\", \"centralgatech.edu\", \"chamberlain.edu\", \"chattahoocheetech.edu\", \"clayton.edu\", \"coastalpines.edu\"). NEVER fabricate domains by stripping spaces.\n5. \"directory_url\": the best official nursing faculty/staff directory URL or departmental faculty URL on their official website.\n6. \"candidates\": an array of 2-3 alternate directory/contact URLs on their official domain.\n\nRespond ONLY with a valid JSON array of objects with keys: id, name, type, official_domain, directory_url, candidates.`;\n\n  let llmItems = [];\n  try {\n    const resRaw = await this.helpers.httpRequest({\n      method: 'POST',\n      url: geminiUrl,\n      headers: { 'Content-Type': 'application/json' },\n      body: {\n        contents: [{ parts: [{ text: prompt }] }],\n        generationConfig: {\n          temperature: 0.1,\n          responseMimeType: 'application/json'\n        }\n      },\n      timeout: 15000\n    });\n\n    const res = typeof resRaw === 'string' ? JSON.parse(resRaw) : resRaw;\n    const rawText = res?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';\n    try {\n      llmItems = JSON.parse(rawText);\n    } catch (parseErr) {\n      const jsonMatch = rawText.match(/\\[[\\s\\S]*\\]/);\n      if (jsonMatch) {\n        llmItems = JSON.parse(jsonMatch[0]);\n      }\n    }\n  } catch (err) {}\n\n  for (const item of needLookup) {\n    const llm = (Array.isArray(llmItems) && llmItems.find(x => x.id === item.id)) ||\n                (Array.isArray(llmItems) && llmItems.find(x => (x.name || x.institution || x.college || '').toLowerCase() === item.name.toLowerCase())) ||\n                {};\n\n    if (llm.type === 'hospital' || isHospital(item.name)) {\n      results.push({\n        index: item.id,\n        json: {\n          'College Name': item.name,\n          'Nursing Faculty Directory URL': 'N/A (Hospital / Medical Center - No Academic Faculty Directory)'\n        }\n      });\n      continue;\n    }\n\n    const domain = (llm.official_domain || llm.domain || '').toLowerCase().replace(/^www\\./, '').trim();\n    const cands = [];\n    if (llm.directory_url && llm.directory_url.startsWith('http')) cands.push(llm.directory_url);\n    if (Array.isArray(llm.candidates)) {\n      for (const c of llm.candidates) {\n        if (c && c.startsWith('http') && !cands.includes(c)) cands.push(c);\n      }\n    }\n    if (domain) {\n      cands.push(`https://${domain}/directory/`);\n      cands.push(`https://${domain}/faculty-staff-directory/`);\n    }\n\n    let selectedUrl = null;\n    if (cands.length > 0) {\n      const nursingCands = cands.filter(u => /nurs/i.test(u));\n      const otherCands = cands.filter(u => !/nurs/i.test(u));\n      const topCands = [...nursingCands, ...otherCands].slice(0, 4);\n      const pings = await Promise.all(topCands.map(u => pingUrl.call(this, u)));\n      for (const p of pings) {\n        if (p.status === 200 || p.status === 403) {\n          selectedUrl = p.url;\n          break;\n        }\n      }\n    }\n\n    if (!selectedUrl) {\n      if (llm.directory_url && llm.directory_url.startsWith('http')) {\n        selectedUrl = llm.directory_url;\n      } else if (domain) {\n        selectedUrl = `https://${domain}/directory/`;\n      } else {\n        selectedUrl = `https://www.google.com/search?q=${encodeURIComponent(item.name + ' nursing faculty directory')}`;\n      }\n    }\n\n    results.push({\n      index: item.id,\n      json: {\n        'College Name': item.name,\n        'Nursing Faculty Directory URL': selectedUrl\n      }\n    });\n  }\n}\n\nresults.sort((a, b) => a.index - b.index);\nreturn results.map(r => ({ json: r.json }));"
+      },
+      "id": "29fc8f97-728e-41de-86be-8df39a634f21",
+      "name": "Search & Inspect Nursing Directories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "col-college",
+              "name": "College Name",
+              "type": "string",
+              "value": "={{ $json['College Name'] }}"
+            },
+            {
+              "id": "col-url",
+              "name": "Nursing Faculty Directory URL",
+              "type": "string",
+              "value": "={{ $json['Nursing Faculty Directory URL'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "576ed2b4-1675-4d9c-aef0-d145cbcaaec4",
+      "name": "Filter Output (College & URL Only)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}"
+      },
+      "id": "9afdac3a-a88b-4ecc-808d-3304efd3d388",
+      "name": "Display Directory URLs",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        740,
+        400
+      ]
+    },
+    {
+      "id": "html-gen-code-node",
+      "name": "Generate Output HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst total = items.length;\nlet dirs = 0;\nlet hospitals = 0;\n\nfor (const it of items) {\n  const u = it.json['Nursing Faculty Directory URL'] || '';\n  if (u.startsWith('http')) dirs++;\n  else hospitals++;\n}\n\nconst rowsHtml = items.map((item) => {\n  const college = item.json['College Name'] || '';\n  const url = item.json['Nursing Faculty Directory URL'] || '';\n  const isLink = url.startsWith('http');\n  const urlHtml = isLink \n    ? '<a class=\"dir-link\" href=\"' + url + '\" target=\"_blank\" rel=\"noopener noreferrer\">' + url + ' <span class=\"ext-icon\">↗</span></a>'\n    : '<span class=\"na-badge\">🏥 Hospital / Medical Center — No Academic Directory</span>';\n  \n  return '<tr>' +\n    '<td class=\"col-name\">' + college + '</td>' +\n    '<td class=\"col-url\">' + urlHtml + '</td>' +\n  '</tr>';\n}).join('\\n');\n\nconst tsvText = items.map(item => (item.json['College Name'] || '') + '\\t' + (item.json['Nursing Faculty Directory URL'] || '')).join('\\n');\n\nconst html = `\n<style>\n  :root {\n    --container-width: 940px !important;\n  }\n  .container {\n    width: 940px !important;\n    max-width: 96vw !important;\n  }\n  body {\n    background-color: #f8fafc !important;\n    color: #0f172a !important;\n    font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif !important;\n    margin: 0 !important;\n    padding: 24px 16px !important;\n  }\n  .nfd-card {\n    max-width: 920px;\n    margin: 0 auto;\n    background: #ffffff;\n    border-radius: 12px;\n    border: 1px solid #e2e8f0;\n    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);\n    padding: 32px 36px;\n    box-sizing: border-box;\n    text-align: left;\n  }\n  .nfd-header {\n    border-bottom: 1px solid #e2e8f0;\n    padding-bottom: 18px;\n    margin-bottom: 22px;\n  }\n  .nfd-header h2 {\n    margin: 0 0 6px 0;\n    font-size: 22px;\n    font-weight: 700;\n    color: #0f172a;\n    display: flex;\n    align-items: center;\n    gap: 8px;\n  }\n  .nfd-header p {\n    margin: 0;\n    font-size: 14px;\n    color: #64748b;\n  }\n  .nfd-stats {\n    display: flex;\n    gap: 10px;\n    margin-bottom: 22px;\n    flex-wrap: wrap;\n  }\n  .nfd-pill {\n    display: inline-flex;\n    align-items: center;\n    gap: 6px;\n    padding: 6px 14px;\n    border-radius: 20px;\n    font-size: 13px;\n    font-weight: 600;\n    background: #f1f5f9;\n    color: #334155;\n    border: 1px solid #e2e8f0;\n  }\n  .nfd-pill.success {\n    background: #ecfdf5;\n    color: #047857;\n    border-color: #a7f3d0;\n  }\n  .nfd-pill.warning {\n    background: #fffbeb;\n    color: #b45309;\n    border-color: #fde68a;\n  }\n  .nfd-table-wrap {\n    width: 100%;\n    border-radius: 8px;\n    border: 1px solid #e2e8f0;\n    overflow: hidden;\n    margin-bottom: 26px;\n    box-shadow: 0 1px 2px rgba(0,0,0,0.02);\n  }\n  .nfd-table {\n    width: 100%;\n    border-collapse: collapse;\n    font-size: 13.5px;\n    background: #ffffff;\n  }\n  .nfd-table th {\n    background: #0f172a;\n    color: #ffffff;\n    padding: 13px 18px;\n    font-weight: 600;\n    font-size: 12.5px;\n    text-transform: uppercase;\n    letter-spacing: 0.04em;\n    border-bottom: 1px solid #0f172a;\n  }\n  .nfd-table td {\n    padding: 12px 18px;\n    border-bottom: 1px solid #f1f5f9;\n    vertical-align: middle;\n    line-height: 1.5;\n  }\n  .nfd-table tr:nth-child(even) {\n    background-color: #f8fafc;\n  }\n  .nfd-table tr:hover {\n    background-color: #f1f5f9;\n  }\n  .col-name {\n    width: 36%;\n    font-weight: 600;\n    color: #1e293b;\n  }\n  .col-url {\n    width: 64%;\n    word-break: break-all;\n  }\n  .dir-link {\n    color: #2563eb;\n    text-decoration: none;\n    font-weight: 500;\n    display: inline-flex;\n    align-items: center;\n    gap: 4px;\n    transition: color 0.15s;\n  }\n  .dir-link:hover {\n    color: #1d4ed8;\n    text-decoration: underline;\n  }\n  .ext-icon {\n    font-size: 12px;\n    opacity: 0.8;\n  }\n  .na-badge {\n    display: inline-block;\n    background: #fef2f2;\n    color: #991b1b;\n    border: 1px solid #fecaca;\n    border-radius: 6px;\n    padding: 3px 10px;\n    font-size: 12px;\n    font-weight: 600;\n  }\n  .nfd-copy-section {\n    background: #f8fafc;\n    border: 1px solid #e2e8f0;\n    border-radius: 8px;\n    padding: 16px 20px;\n    margin-bottom: 24px;\n  }\n  .nfd-copy-header {\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    margin-bottom: 8px;\n  }\n  .nfd-copy-title {\n    font-weight: 600;\n    font-size: 13px;\n    color: #334155;\n  }\n  .btn-copy {\n    background: #ffffff;\n    border: 1px solid #cbd5e1;\n    padding: 5px 12px;\n    border-radius: 6px;\n    font-size: 12px;\n    font-weight: 600;\n    cursor: pointer;\n    color: #1e293b;\n    display: inline-flex;\n    align-items: center;\n    gap: 5px;\n    transition: all 0.15s;\n  }\n  .btn-copy:hover {\n    background: #f1f5f9;\n    border-color: #94a3b8;\n  }\n  .nfd-textarea {\n    width: 100%;\n    height: 100px;\n    box-sizing: border-box;\n    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n    font-size: 12px;\n    padding: 10px 12px;\n    border: 1px solid #cbd5e1;\n    border-radius: 6px;\n    background: #ffffff;\n    color: #0f172a;\n    resize: vertical;\n  }\n  .nfd-actions {\n    display: flex;\n    justify-content: flex-start;\n  }\n  .btn-search-again {\n    display: inline-flex;\n    align-items: center;\n    gap: 6px;\n    background: #2563eb;\n    color: #ffffff !important;\n    padding: 10px 22px;\n    border-radius: 6px;\n    font-weight: 600;\n    font-size: 14px;\n    text-decoration: none;\n    transition: background 0.15s;\n  }\n  .btn-search-again:hover {\n    background: #1d4ed8;\n  }\n</style>\n\n<div class=\"nfd-card\">\n  <div class=\"nfd-header\">\n    <h2>✅ Official Nursing Faculty Directory URLs</h2>\n    <p>Departmental directory links identified and verified for your submitted institutions.</p>\n  </div>\n\n  <div class=\"nfd-stats\">\n    <div class=\"nfd-pill\">📊 Total: ${total}</div>\n    <div class=\"nfd-pill success\">🔗 Directories: ${dirs}</div>\n    <div class=\"nfd-pill warning\">🏥 Medical Centers: ${hospitals}</div>\n  </div>\n\n  <div class=\"nfd-table-wrap\">\n    <table class=\"nfd-table\">\n      <thead>\n        <tr>\n          <th>College Name</th>\n          <th>Official Nursing Faculty Directory URL</th>\n        </tr>\n      </thead>\n      <tbody>\n        ${rowsHtml}\n      </tbody>\n    </table>\n  </div>\n\n  <div class=\"nfd-copy-section\">\n    <div class=\"nfd-copy-header\">\n      <span class=\"nfd-copy-title\">📋 Copy-Paste List (TSV formatted for Excel / Google Sheets):</span>\n      <button type=\"button\" class=\"btn-copy\" onclick=\"var a=document.getElementById('nfd-tsv-box');a.select();navigator.clipboard.writeText(a.value);this.textContent='✅ Copied!';var b=this;setTimeout(function(){b.textContent='📋 Copy List';},2000);\">📋 Copy List</button>\n    </div>\n    <textarea id=\"nfd-tsv-box\" class=\"nfd-textarea\" readonly>${tsvText}</textarea>\n  </div>\n\n  <div class=\"nfd-actions\">\n    <a href=\"/form/nursing-directory-finder\" class=\"btn-search-again\">🔍 Search More Colleges</a>\n  </div>\n</div>\n`;\n\nreturn [{ json: { html } }];"
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Workflow Settings & API Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Form Submitted": {
+      "main": [
+        [
+          {
+            "node": "Workflow Settings & API Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Settings & API Keys": {
+      "main": [
+        [
+          {
+            "node": "Parse College List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse College List": {
+      "main": [
+        [
+          {
+            "node": "Search & Inspect Nursing Directories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search & Inspect Nursing Directories": {
+      "main": [
+        [
+          {
+            "node": "Filter Output (College & URL Only)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Output (College & URL Only)": {
+      "main": [
+        [
+          {
+            "node": "Generate Output HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Output HTML": {
+      "main": [
+        [
+          {
+            "node": "Display Directory URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 180
+  }
+}

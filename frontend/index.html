@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Contact Finder - Automated Contact & Email Discovery</title>
@@ -168,40 +171,55 @@
       </div>
     </div>
 
-    <!-- Status Alert Banner (Shown when Cloudflare 403 or 0 contacts found) -->
-    <div id="status-alert-banner" class="hidden p-5 rounded-2xl border transition shadow-xl space-y-2">
-      <div class="flex items-center space-x-3">
-        <div id="alert-icon-container" class="w-10 h-10 rounded-xl flex items-center justify-center">
-          <i id="alert-icon" data-lucide="alert-triangle" class="w-5 h-5"></i>
+    <!-- Results Section (Visible after extraction) -->
+    <section id="results-section" class="space-y-5 hidden">
+      
+      <!-- Metrics Overview Cards (6 Columns with Counts) -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Total Extracted</p>
+          <p id="metric-total" class="text-2xl sm:text-3xl font-bold text-indigo-400 mt-1">0</p>
         </div>
-        <div>
-          <h3 id="alert-title" class="font-semibold text-base">Status Message</h3>
-          <p id="alert-desc" class="text-sm text-slate-300">Detailed description here.</p>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Unique Contacts</p>
+          <p id="metric-unique" class="text-2xl sm:text-3xl font-bold text-slate-100 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Successful Links</p>
+          <p id="metric-success-links" class="text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Failed Links</p>
+          <p id="metric-failed-links" class="text-2xl sm:text-3xl font-bold text-rose-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Emails Found</p>
+          <p id="metric-emails" class="text-2xl sm:text-3xl font-bold text-sky-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <p class="text-xs text-slate-400 font-medium">Phones Found</p>
+          <p id="metric-phones" class="text-2xl sm:text-3xl font-bold text-amber-400 mt-1">0</p>
         </div>
       </div>
-    </div>
 
-    <!-- Results Section (Visible after extraction) -->
-    <section id="results-section" class="space-y-6 hidden">
-      
-      <!-- Metrics Overview Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Total Extracted</p>
-          <p id="metric-total" class="text-3xl font-bold text-indigo-400 mt-1">0</p>
+      <!-- Compact Collapsible Failed Links Bar (Clean, simple, non-intrusive) -->
+      <div id="failed-urls-summary-card" class="hidden p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between transition">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-rose-400 flex-shrink-0"></span>
+          <p class="text-sm text-slate-200">
+            <span id="failed-count-badge" class="font-bold text-rose-400">0</span> link(s) could not be extracted
+          </p>
+          <span class="text-xs text-slate-500 hidden md:inline">(Cloudflare protected, PDF, or non-directory)</span>
         </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Unique Contacts</p>
-          <p id="metric-unique" class="text-3xl font-bold text-emerald-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Emails Found</p>
-          <p id="metric-emails" class="text-3xl font-bold text-sky-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Phones Found</p>
-          <p id="metric-phones" class="text-3xl font-bold text-amber-400 mt-1">0</p>
-        </div>
+        <button id="toggle-failed-btn" onclick="toggleFailedDrawer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer">
+          <span id="failed-toggle-label">View Failed Links</span>
+          <i data-lucide="chevron-down" id="failed-toggle-chevron" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <!-- Collapsible Drawer for Failed Links -->
+      <div id="failed-urls-drawer" class="hidden p-3 bg-slate-950/90 rounded-xl border border-slate-800/80 max-h-56 overflow-y-auto space-y-1.5">
+        <!-- Compact list populated dynamically -->
       </div>
 
       <!-- Table Toolbar -->
@@ -209,7 +227,7 @@
         <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
           <div class="relative w-full max-w-md">
             <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <input type="text" id="table-search" oninput="filterTable()" placeholder="Search contacts by name, title, campus, email..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <input type="text" id="table-search" oninput="filterTable()" placeholder="Search contacts by school, name, title, email, phone..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <span id="filtered-count" class="text-xs text-slate-400 whitespace-nowrap">Showing 0 contacts</span>
         </div>
@@ -229,13 +247,14 @@
             <thead class="bg-slate-950/80 sticky top-0 z-10 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-semibold">
               <tr>
                 <th class="py-3.5 px-4 w-12 text-center">#</th>
+                <th class="py-3.5 px-4">School</th>
                 <th class="py-3.5 px-4">First Name</th>
                 <th class="py-3.5 px-4">Last Name</th>
-                <th class="py-3.5 px-4">Credentials</th>
                 <th class="py-3.5 px-4">Title</th>
-                <th class="py-3.5 px-4">Campus / Location</th>
+                <th class="py-3.5 px-4">Credentials</th>
                 <th class="py-3.5 px-4">Email</th>
                 <th class="py-3.5 px-4">Phone</th>
+                <th class="py-3.5 px-4">Campus</th>
               </tr>
             </thead>
             <tbody id="table-body" class="divide-y divide-slate-800/60 font-normal">
@@ -288,27 +307,47 @@
     };
     let selectedProvider = "hunter";
 
-    // Initialize Lucide icons on load
-    document.addEventListener("DOMContentLoaded", () => {
-      lucide.createIcons();
-      document.getElementById("api-url-input").value = API_BASE;
+    // Initialize safely even if DOM is already parsed
+    function init() {
+      try {
+        if (window.lucide && typeof lucide.createIcons === "function") {
+          lucide.createIcons();
+        }
+      } catch (err) {
+        console.warn("Lucide icons init warning:", err);
+      }
+      const apiInput = document.getElementById("api-url-input");
+      if (apiInput) apiInput.value = API_BASE;
       renderProviderUI();
       checkHealth();
-    });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
 
     // Check backend health status and retrieve env true/false flags
     async function checkHealth() {
       const dot = document.getElementById("status-dot");
       const text = document.getElementById("status-text");
+      if (!dot || !text) return;
+
       try {
-        const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
           const data = await res.json();
           dot.className = "w-2 h-2 rounded-full bg-emerald-400";
           text.textContent = "Server Online";
-          addLog("Connected to server successfully.");
 
           // Update active / disabled flags directly according to env
+          const prevHunter = envStatus.enable_hunter;
+          const prevRocket = envStatus.enable_rocketreach;
           envStatus.enable_hunter = Boolean(data.enable_hunter);
           envStatus.enable_rocketreach = Boolean(data.enable_rocketreach);
 
@@ -319,14 +358,15 @@
             selectedProvider = "hunter";
           }
 
-          renderProviderUI();
+          if (prevHunter !== envStatus.enable_hunter || prevRocket !== envStatus.enable_rocketreach) {
+            renderProviderUI();
+          }
         } else {
-          throw new Error();
+          throw new Error(`HTTP ${res.status}`);
         }
       } catch (e) {
         dot.className = "w-2 h-2 rounded-full bg-rose-500";
         text.textContent = "Server Offline (port 8000)";
-        addLog("Cannot connect to server at " + API_BASE);
       }
     }
 
@@ -472,6 +512,41 @@
       }
     }
 
+    // Helper to resolve clean college / university name for non-technical users
+    function getCollegeName(url, school) {
+      if (school && typeof school === 'string' && school.trim() && !['university', 'college', 'unknown', 'none'].includes(school.trim().toLowerCase())) {
+        return school.trim();
+      }
+      try {
+        const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+        const known = {
+          'asurams.edu': 'Albany State University',
+          'georgiasouthern.edu': 'Georgia Southern University',
+          'lagrange.edu': 'LaGrange College',
+          'gntc.edu': 'Georgia Northwestern Technical College',
+          'augusta.edu': 'Augusta University',
+          'uga.edu': 'University of Georgia',
+          'gsu.edu': 'Georgia State University',
+          'kennesaw.edu': 'Kennesaw State University',
+          'gatech.edu': 'Georgia Institute of Technology',
+          'columbusstate.edu': 'Columbus State University',
+          'ung.edu': 'University of North Georgia',
+          'valdosta.edu': 'Valdosta State University',
+          'westga.edu': 'University of West Georgia',
+          'gcsu.edu': 'Georgia College & State University',
+          'emory.edu': 'Emory University',
+          'mercer.edu': 'Mercer University'
+        };
+        for (const [dom, name] of Object.entries(known)) {
+          if (host.includes(dom)) return name;
+        }
+        const core = host.split('.')[0] || 'Institution';
+        return core.charAt(0).toUpperCase() + core.slice(1) + ' University';
+      } catch (e) {
+        return 'Directory Link';
+      }
+    }
+
     // Main scrape trigger
     async function startScrape() {
       const rawUrls = document.getElementById("urls-input").value.trim();
@@ -540,14 +615,17 @@
         // Process individual URL logs into activity box
         if (result.url_logs && result.url_logs.length > 0) {
           result.url_logs.forEach(l => {
-            if (l.status === 'blocked') {
-              addLog(`⚠️ [BLOCKED] ${l.url}: ${l.message}`);
-            } else if (l.status === 'no_contacts') {
-              addLog(`ℹ️ [NO CONTACTS] ${l.url}: ${l.message}`);
+            const college = getCollegeName(l.url, l.school || l.university);
+            if (l.status === 'blocked' || l.status === 'no_contacts' || l.status === 'error' || l.status === 'exception') {
+              addLog(`❌ [COULD NOT EXTRACT] ${college} (${l.url})`);
             } else {
-              addLog(`✓ [FOUND] ${l.url}: Extracted ${l.count} contact(s).`);
+              addLog(`✓ [EXTRACTED] ${college} — Found ${l.count} contact(s).`);
             }
           });
+        }
+
+        if (result.failed_urls && result.failed_urls.length > 0) {
+          addLog(`⚠️ [NOTICE] Could not extract contacts from ${result.failed_urls.length} of ${urls.length} college(s).`);
         }
 
         renderResults(result);
@@ -562,52 +640,107 @@
       }
     }
 
+    // Toggle failed links accordion drawer
+    function toggleFailedDrawer() {
+      const drawer = document.getElementById("failed-urls-drawer");
+      const label = document.getElementById("failed-toggle-label");
+      const chevron = document.getElementById("failed-toggle-chevron");
+      if (!drawer) return;
+      const isHidden = drawer.classList.contains("hidden");
+      if (isHidden) {
+        drawer.classList.remove("hidden");
+        if (label) label.textContent = "Hide Failed Links";
+        if (chevron) chevron.setAttribute("data-lucide", "chevron-up");
+      } else {
+        drawer.classList.add("hidden");
+        if (label) label.textContent = "View Failed Links";
+        if (chevron) chevron.setAttribute("data-lucide", "chevron-down");
+      }
+      if (window.lucide && typeof lucide.createIcons === "function") {
+        lucide.createIcons();
+      }
+    }
+
     // Render returned results in dashboard
     function renderResults(data) {
       extractedData = data.contacts || [];
-      const banner = document.getElementById("status-alert-banner");
-      const titleEl = document.getElementById("alert-title");
-      const descEl = document.getElementById("alert-desc");
-      const iconContainer = document.getElementById("alert-icon-container");
       const timerBadge = document.getElementById("timer-badge");
+      const failedUrls = data.failed_urls || [];
+      const successfulUrls = data.successful_urls || [];
 
-      if (extractedData.length === 0) {
-        // Show status message banner
-        banner.classList.remove("hidden");
-        if (data.status === "blocked") {
-          banner.className = "p-5 rounded-2xl border border-rose-500/40 bg-rose-950/40 transition shadow-xl space-y-2 text-rose-200";
-          iconContainer.className = "w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center";
-          titleEl.textContent = "Access Blocked (Cloudflare Anti-Bot Security)";
-          descEl.textContent = data.message || "Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden). Automatic access is restricted by the institution.";
-          timerBadge.textContent = "Blocked";
-          timerBadge.className = "badge bg-rose-950 text-rose-400 border border-rose-800";
+      // Update metric cards with clear counts
+      const totalExtractedEl = document.getElementById("metric-total");
+      const uniqueEl = document.getElementById("metric-unique");
+      const successLinksEl = document.getElementById("metric-success-links");
+      const failedLinksEl = document.getElementById("metric-failed-links");
+      const emailsEl = document.getElementById("metric-emails");
+
+      if (totalExtractedEl) totalExtractedEl.textContent = data.total_extracted || 0;
+      if (uniqueEl) uniqueEl.textContent = data.unique_contacts || 0;
+      if (successLinksEl) successLinksEl.textContent = successfulUrls.length;
+      if (failedLinksEl) failedLinksEl.textContent = failedUrls.length;
+
+      const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
+      if (emailsEl) emailsEl.textContent = emailCount;
+
+      const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
+      const phonesEl = document.getElementById("metric-phones");
+      if (phonesEl) phonesEl.textContent = phoneCount;
+
+      // Update timer badge
+      if (timerBadge) {
+        if (extractedData.length > 0) {
+          timerBadge.textContent = "Complete";
+          timerBadge.className = "badge bg-emerald-950 text-emerald-400 border border-emerald-800";
         } else {
-          banner.className = "p-5 rounded-2xl border border-amber-500/40 bg-amber-950/40 transition shadow-xl space-y-2 text-amber-200";
-          iconContainer.className = "w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center";
-          titleEl.textContent = "No Nursing Contacts Found";
-          descEl.textContent = data.message || "No nursing faculty or staff contacts were found on this directory URL. Please check the URL or confirm that nursing faculty are listed on that page.";
-          timerBadge.textContent = "0 Found";
-          timerBadge.className = "badge bg-amber-950 text-amber-400 border border-amber-800";
+          timerBadge.textContent = "0 Contacts";
+          timerBadge.className = "badge bg-rose-950 text-rose-400 border border-rose-800";
         }
-        document.getElementById("results-section").classList.add("hidden");
-        banner.scrollIntoView({ behavior: "smooth" });
-        lucide.createIcons();
-        return;
       }
 
-      // Hide banner if contacts were found
-      banner.classList.add("hidden");
-      timerBadge.textContent = "Complete";
-      timerBadge.className = "badge bg-emerald-950 text-emerald-400 border border-emerald-800";
+      // Compact failed URLs summary card & drawer
+      const summaryCard = document.getElementById("failed-urls-summary-card");
+      const countBadge = document.getElementById("failed-count-badge");
+      const drawer = document.getElementById("failed-urls-drawer");
 
-      // Update metric cards
-      document.getElementById("metric-total").textContent = data.total_extracted || 0;
-      document.getElementById("metric-unique").textContent = data.unique_contacts || 0;
-      
-      const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
-      const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
-      document.getElementById("metric-emails").textContent = emailCount;
-      document.getElementById("metric-phones").textContent = phoneCount;
+      if (summaryCard && countBadge && drawer) {
+        if (failedUrls.length > 0) {
+          summaryCard.classList.remove("hidden");
+          countBadge.textContent = failedUrls.length;
+
+          drawer.innerHTML = failedUrls.map(f => {
+            const collegeName = getCollegeName(f.url, f.school);
+            const reason = f.reason || (f.status === "blocked" ? "Cloudflare Protected" : "No Contacts Found");
+
+            let badgeStyle = "bg-slate-800 text-slate-300 border-slate-700";
+            if (reason.toLowerCase().includes("cloudflare") || reason.toLowerCase().includes("403")) {
+              badgeStyle = "bg-amber-950/70 text-amber-300 border-amber-800";
+            } else if (reason.toLowerCase().includes("timeout")) {
+              badgeStyle = "bg-rose-950/70 text-rose-300 border-rose-800";
+            } else if (reason.toLowerCase().includes("homepage")) {
+              badgeStyle = "bg-purple-950/70 text-purple-300 border-purple-800";
+            } else if (reason.toLowerCase().includes("pdf")) {
+              badgeStyle = "bg-sky-950/70 text-sky-300 border-sky-800";
+            }
+
+            return `
+              <div class="px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div class="flex items-center space-x-2 min-w-0">
+                  <span class="font-medium text-slate-200 truncate">${collegeName}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded border ${badgeStyle} whitespace-nowrap flex-shrink-0 font-medium">${reason}</span>
+                </div>
+                <a href="${f.url}" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:underline flex items-center gap-1 font-mono text-[11px] truncate max-w-xs sm:max-w-sm flex-shrink-0">
+                  <span class="truncate">${f.url}</span>
+                  <i data-lucide="external-link" class="w-3 h-3 flex-shrink-0 inline"></i>
+                </a>
+              </div>
+            `;
+          }).join("");
+        } else {
+          summaryCard.classList.add("hidden");
+          drawer.classList.add("hidden");
+        }
+      }
 
       // Update download file state
       currentExportFilename = data.filename || "contacts_export.xlsx";
@@ -616,9 +749,16 @@
       // Populate table
       populateTable(extractedData);
 
-      // Reveal section
-      document.getElementById("results-section").classList.remove("hidden");
-      document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
+      // Reveal results section
+      const resultsSection = document.getElementById("results-section");
+      if (resultsSection) {
+        resultsSection.classList.remove("hidden");
+        resultsSection.scrollIntoView({ behavior: "smooth" });
+      }
+
+      if (window.lucide && typeof lucide.createIcons === "function") {
+        lucide.createIcons();
+      }
     }
 
     // Populate data table rows
@@ -650,16 +790,18 @@
 
         const emailHtml = c.email ? `<div class="flex items-center gap-1"><a href="mailto:${c.email}" class="text-sky-400 hover:underline flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 inline"></i>${c.email}</a>${sourceBadge}</div>` : '<span class="text-slate-600">-</span>';
         const phoneHtml = c.phone ? `<a href="tel:${c.phone}" class="text-slate-300 hover:text-white flex items-center gap-1"><i data-lucide="phone" class="w-3.5 h-3.5 inline text-slate-500"></i>${c.phone}</a>` : '<span class="text-slate-600">-</span>';
+        const campusHtml = c.campus ? c.campus : '<span class="text-slate-600">-</span>';
 
         tr.innerHTML = `
           <td class="py-3 px-4 text-center text-xs text-slate-500 font-mono">${idx + 1}</td>
+          <td class="py-3 px-4 font-semibold text-indigo-300 whitespace-nowrap">${c.school || "-"}</td>
           <td class="py-3 px-4 font-medium text-slate-100">${c.first_name || ""}</td>
           <td class="py-3 px-4 font-medium text-slate-100">${c.last_name || ""}</td>
-          <td class="py-3 px-4">${credsHtml}</td>
           <td class="py-3 px-4 text-slate-300">${c.title || ""}</td>
-          <td class="py-3 px-4 text-slate-300">${c.campus || ""}</td>
+          <td class="py-3 px-4">${credsHtml}</td>
           <td class="py-3 px-4">${emailHtml}</td>
           <td class="py-3 px-4">${phoneHtml}</td>
+          <td class="py-3 px-4 text-slate-300">${campusHtml}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -677,12 +819,14 @@
 
       const filtered = extractedData.filter(c => {
         return (
+          (c.school && c.school.toLowerCase().includes(q)) ||
           (c.first_name && c.first_name.toLowerCase().includes(q)) ||
           (c.last_name && c.last_name.toLowerCase().includes(q)) ||
-          ((c.credentials || c.credential || "").toLowerCase().includes(q)) ||
           (c.title && c.title.toLowerCase().includes(q)) ||
+          ((c.credentials || c.credential || "").toLowerCase().includes(q)) ||
           (c.campus && c.campus.toLowerCase().includes(q)) ||
-          (c.email && c.email.toLowerCase().includes(q))
+          (c.email && c.email.toLowerCase().includes(q)) ||
+          (c.phone && c.phone.toLowerCase().includes(q))
         );
       });
 
@@ -696,33 +840,35 @@
         return;
       }
 
-      // Format clean rows matching the 7 standard columns
+      // Format clean rows matching the 8 standard columns
       const formattedRows = extractedData.map(c => ({
+        "School": (c.school || "").trim(),
         "First Name": (c.first_name || "").trim(),
         "Last Name": (c.last_name || "").trim(),
-        "Credentials": (c.credentials || c.credential || "").trim(),
         "Title": (c.title || "").trim(),
-        "Campus": (c.campus || "").trim(),
+        "Credentials": (c.credentials || c.credential || "").trim(),
         "Email": (c.email || "").trim(),
-        "Phone": (c.phone || "").trim()
+        "Phone": (c.phone || "").trim(),
+        "Campus": (c.campus || "").trim()
       }));
 
       // Instant client-side Excel generation via SheetJS (bulletproof on serverless Vercel)
       if (typeof XLSX !== "undefined") {
         try {
           const ws = XLSX.utils.json_to_sheet(formattedRows, {
-            header: ["First Name", "Last Name", "Credentials", "Title", "Campus", "Email", "Phone"]
+            header: ["School", "First Name", "Last Name", "Title", "Credentials", "Email", "Phone", "Campus"]
           });
 
           // Set clean column widths
           ws['!cols'] = [
-            { wch: 15 },
-            { wch: 15 },
-            { wch: 18 },
-            { wch: 32 },
-            { wch: 28 },
-            { wch: 30 },
-            { wch: 18 }
+            { wch: 28 }, // School
+            { wch: 15 }, // First Name
+            { wch: 15 }, // Last Name
+            { wch: 32 }, // Title
+            { wch: 18 }, // Credentials
+            { wch: 30 }, // Email
+            { wch: 18 }, // Phone
+            { wch: 20 }  // Campus
           ];
 
           const wb = XLSX.utils.book_new();

@@ -3,11 +3,17 @@ import os
 import re
 import sys
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 
 # Reconfigure standard output encoding to UTF-8 on Windows
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
+
+# Ensure backend directory is in sys.path
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
 # Load environment variables from local .env
 load_dotenv()
@@ -20,20 +26,58 @@ from src.nodes.exporter import export_contacts_to_excel
 DEFAULT_URL = "https://www.asurams.edu/academic-affairs/dchealthprof/facultystaff-directory.php"
 
 # Default extraction prompt
-DEFAULT_PROMPT = "create an excel file of nursing faculty - include first name, last name, credentials, title, campus, email and phone"
+DEFAULT_PROMPT = "create an excel file of nursing faculty - include school, first name, last name, title, credentials, email, phone, and campus"
 
-# Deduplicates contacts based on normalized first and last name
+# Deduplicates contacts based on normalized school, first name, and last name
 def deduplicate_contacts(contacts: list) -> list:
     seen = set()
     deduped = []
     for c in contacts:
         fn = str(c.get("first_name", "")).strip().lower()
         ln = str(c.get("last_name", "")).strip().lower()
-        key = f"{fn}_{ln}"
-        if key not in seen and key != "_":
+        school = str(c.get("school", "")).strip().lower()
+        key = f"{school}_{fn}_{ln}"
+        if key not in seen and f"{fn}_{ln}" != "_":
             seen.add(key)
             deduped.append(c)
     return deduped
+
+# Maximum simultaneous requests for scraping and Gemini AI extraction
+MAX_CONCURRENT_REQUESTS = 5
+
+# Processes a single URL for CLI execution
+def process_cli_url(url: str, user_prompt: str, output_file: str, enrich_limit: int, compiled_graph):
+    initial_state = {
+        "url": url,
+        "user_prompt": user_prompt,
+        "output_file": output_file,
+        "enrich_limit": enrich_limit
+    }
+    try:
+        final_state = compiled_graph.invoke(initial_state)
+        university = final_state.get("university", "").strip()
+
+        if final_state.get("error"):
+            err_msg = str(final_state["error"])
+            return {"url": url, "contacts": [], "error": err_msg, "success": False}
+
+        extracted = final_state.get("contacts", [])
+        for c in extracted:
+            if not c.get("school"):
+                c["school"] = university or ""
+
+        if len(extracted) == 0:
+            return {"url": url, "contacts": [], "error": "No nursing contacts found on page", "success": False}
+        else:
+            return {
+                "url": url,
+                "contacts": extracted,
+                "count": len(extracted),
+                "status": final_state.get('status', f'Found {len(extracted)} contacts'),
+                "success": True
+            }
+    except Exception as e:
+        return {"url": url, "contacts": [], "error": str(e), "success": False}
 
 # Runs the complete LangGraph pipeline across one or more directory URLs
 def run_pipeline(urls: list, output_file: str, user_prompt: str, enrich_limit: int = None):
@@ -51,33 +95,42 @@ def run_pipeline(urls: list, output_file: str, user_prompt: str, enrich_limit: i
 
     compiled_graph = create_scraper_graph()
     all_contacts = []
+    failed_urls = []
+    successful_urls = []
+    effective_workers = min(MAX_CONCURRENT_REQUESTS, len(urls))
 
-    # Process each directory URL individually to isolate failures
-    for idx, url in enumerate(urls, 1):
-        print(f"\n🌐 [{idx}/{len(urls)}] Processing URL: {url}")
-        print("-" * 75)
+    print(f"[*] Running {len(urls)} directory URL(s) with {effective_workers} concurrent worker(s)...")
 
-        initial_state = {
-            "url": url,
-            "user_prompt": user_prompt,
-            "output_file": output_file,
-            "enrich_limit": enrich_limit
+    # Process URLs concurrently with up to 5 workers
+    with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+        future_to_info = {
+            executor.submit(process_cli_url, url, user_prompt, output_file, enrich_limit, compiled_graph): (idx, url)
+            for idx, url in enumerate(urls, 1)
         }
 
-        try:
-            # Execute LangGraph StateGraph pipeline
-            final_state = compiled_graph.invoke(initial_state)
+        for future in as_completed(future_to_info):
+            idx, url = future_to_info[future]
+            try:
+                res = future.result()
+                if res.get("success"):
+                    print(f"  ✓ [{idx}/{len(urls)}] Extracted {res.get('count', 0)} contact(s) from {url}")
+                    all_contacts.extend(res.get("contacts", []))
+                    successful_urls.append({"url": url, "count": res.get("count", 0)})
+                else:
+                    err = res.get("error", "Failed")
+                    print(f"  ❌ [{idx}/{len(urls)}] Error processing {url}: {err}")
+                    failed_urls.append({"url": url, "reason": err})
+            except Exception as exc:
+                print(f"  ❌ [{idx}/{len(urls)}] Workflow exception for {url}: {str(exc)}")
+                failed_urls.append({"url": url, "reason": str(exc)})
 
-            if final_state.get("error"):
-                print(f"  ❌ Error processing {url}: {final_state['error']}")
-                continue
-
-            extracted = final_state.get("contacts", [])
-            print(f"  ✓ {final_state.get('status', 'Completed')}")
-            all_contacts.extend(extracted)
-        except Exception as e:
-            print(f"  ❌ Workflow exception for {url}: {str(e)}")
-            continue
+    # Show failed URLs report if any
+    if failed_urls:
+        print("\n" + "!" * 75)
+        print(f"⚠️  UNABLE TO EXTRACT CONTACTS FROM {len(failed_urls)} OF {len(urls)} URL(S):")
+        for f in failed_urls:
+            print(f"   • {f['url']} -> Reason: {f['reason']}")
+        print("!" * 75)
 
     # Deduplicate accumulated contacts
     unique_contacts = deduplicate_contacts(all_contacts)
@@ -89,19 +142,20 @@ def run_pipeline(urls: list, output_file: str, user_prompt: str, enrich_limit: i
     saved_path = export_contacts_to_excel(unique_contacts, output_file)
     print(f"\n🎉 Saved Excel file: {os.path.abspath(saved_path)}\n")
 
-    # Render summary table in console
-    print(f"{'#':<3} | {'First Name':<14} | {'Last Name':<14} | {'Credentials':<18} | {'Campus':<24} | {'Email':<26} | {'Phone':<15} | {'Title'}")
-    print("-" * 140)
+    # Render summary table in console with 8 columns
+    print(f"{'#':<3} | {'School':<26} | {'First Name':<14} | {'Last Name':<14} | {'Title':<24} | {'Credentials':<16} | {'Email':<26} | {'Phone':<14} | {'Campus'}")
+    print("-" * 155)
     for i, c in enumerate(unique_contacts[:15], 1):
+        sch = str(c.get("school", ""))[:26]
         fn = str(c.get("first_name", ""))[:14]
         ln = str(c.get("last_name", ""))[:14]
-        creds = str(c.get("credentials") or c.get("credential") or "")[:18]
-        camp = str(c.get("campus", ""))[:24]
+        title = str(c.get("title", ""))[:24]
+        creds = str(c.get("credentials") or c.get("credential") or "")[:16]
         email = str(c.get("email", ""))[:26]
-        phone = str(c.get("phone", ""))[:15]
-        title = str(c.get("title", ""))[:25]
-        print(f"{i:<3} | {fn:<14} | {ln:<14} | {creds:<18} | {camp:<24} | {email:<26} | {phone:<15} | {title}")
-    print("-" * 140 + "\n")
+        phone = str(c.get("phone", ""))[:14]
+        camp = str(c.get("campus", ""))[:20]
+        print(f"{i:<3} | {sch:<26} | {fn:<14} | {ln:<14} | {title:<24} | {creds:<16} | {email:<26} | {phone:<14} | {camp}")
+    print("-" * 155 + "\n")
 
     return saved_path
 

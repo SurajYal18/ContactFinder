@@ -1,4 +1,4 @@
-# LangGraph node to export extracted contacts into a formatted 7-column Excel workbook
+# LangGraph node to export extracted contacts into a formatted 8-column Excel workbook
 import os
 import tempfile
 import pandas as pd
@@ -9,17 +9,18 @@ def export_contacts_to_excel(contacts: list, output_filename: str) -> str:
     rows = []
     for c in contacts:
         rows.append({
+            "School": str(c.get("school") or "").strip(),
             "First Name": str(c.get("first_name") or "").strip(),
             "Last Name": str(c.get("last_name") or "").strip(),
-            "Credentials": str(c.get("credentials") or c.get("credential") or "").strip(),
             "Title": str(c.get("title") or "").strip(),
-            "Campus": str(c.get("campus") or "").strip(),
+            "Credentials": str(c.get("credentials") or c.get("credential") or "").strip(),
             "Email": str(c.get("email") or "").strip(),
-            "Phone": str(c.get("phone") or "").strip()
+            "Phone": str(c.get("phone") or "").strip(),
+            "Campus": str(c.get("campus") or "").strip()
         })
 
-    # Predefine exact standard 7 columns
-    columns = ["First Name", "Last Name", "Credentials", "Title", "Campus", "Email", "Phone"]
+    # Predefine exact standard 8 columns in requested order
+    columns = ["School", "First Name", "Last Name", "Title", "Credentials", "Email", "Phone", "Campus"]
     df = pd.DataFrame(rows, columns=columns)
 
     # Determine valid writable destination path

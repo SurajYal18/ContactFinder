@@ -1,9 +1,15 @@
+import io
 import re
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
+import urllib3
+import pypdf
 from bs4 import BeautifulSoup
 from src.state import ScraperState
+
+# Suppress insecure request warnings for colleges with expired or self-signed SSL certs
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Standard browser request headers to avoid blocking
 BROWSER_HEADERS = {
@@ -11,10 +17,51 @@ BROWSER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 }
 
+# Decodes Cloudflare XOR obfuscated email strings (data-cfemail)
+def decode_cloudflare_email(cfemail: str) -> str:
+    try:
+        k = int(cfemail[:2], 16)
+        return "".join([chr(int(cfemail[i:i+2], 16) ^ k) for i in range(2, len(cfemail), 2)])
+    except Exception:
+        return ""
+
 # Cleans raw HTML text into readable lines preserving emails and phone links
 def sanitize_raw_html(html: str) -> str:
-    # Strip script blocks
-    clean = re.sub(r'<script.*?</script>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+    # Decode Cloudflare protected emails: data-cfemail
+    def replace_cf_email(match):
+        dec = decode_cloudflare_email(match.group(1))
+        return f" Email: {dec} " if dec else " "
+    clean = re.sub(r'data-cfemail=[\'"]([a-f0-9]+)[\'"]', replace_cf_email, html, flags=re.IGNORECASE)
+
+    # Decode data-email and data-mailto attributes on icons/buttons
+    clean = re.sub(r'data-(?:email|mailto)=[\'"]([^\'"]+@[\w\.-]+\.\w+)[\'"]', r' Email: \1 ', clean, flags=re.IGNORECASE)
+
+    # Decode JavaScript substitution cipher emails (used by UNG and CMS directory platforms)
+    def decode_js_cipher_email(match):
+        coded = match.group(1)
+        key = match.group(2)
+        shift = len(coded)
+        link = ""
+        for i in range(len(coded)):
+            char = coded[i]
+            if char not in key:
+                link += char
+            else:
+                idx = (key.index(char) - shift + len(key)) % len(key)
+                link += key[idx]
+        if "@" in link:
+            return f" Email: {link} "
+        return ""
+
+    clean = re.sub(
+        r'<script(?:(?!<script).)*?coded\s*=\s*"([^"]+)"\s*key\s*=\s*"([^"]+)".*?</script>',
+        decode_js_cipher_email,
+        clean,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Strip remaining script blocks
+    clean = re.sub(r'<script.*?</script>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
     # Strip style blocks
     clean = re.sub(r'<style.*?</style>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
     # Strip SVG elements
@@ -35,14 +82,154 @@ def sanitize_raw_html(html: str) -> str:
     lines = [re.sub(r'[ \t]+', ' ', line).strip() for line in clean.split('\n')]
     return '\n'.join([l for l in lines if l])
 
-# Fetches web content handling standard GET or form-based search portals
+# Automatically submits department filter forms when department selection does not change the URL (e.g. Southern Crescent Tech)
+def auto_submit_department_form(url: str, html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for form in soup.find_all("form"):
+        selects = form.find_all("select")
+        dept_select = None
+        target_option_val = None
+
+        for sel in selects:
+            for opt in sel.find_all("option"):
+                opt_txt = opt.get_text(" ", strip=True).lower()
+                val = opt.get("value", "")
+                if re.search(r'\b(?:nurs|allied health|health sci)', opt_txt) and val:
+                    dept_select = sel.get("name")
+                    target_option_val = val
+                    break
+            if dept_select:
+                break
+
+        if dept_select and target_option_val:
+            payload = {}
+            for inp in form.find_all(["input", "select"]):
+                name = inp.get("name")
+                if not name:
+                    continue
+                if name == dept_select:
+                    payload[name] = target_option_val
+                elif inp.name == "input":
+                    val = inp.get("value", "")
+                    inp_type = (inp.get("type") or "text").lower()
+                    if inp_type in ["hidden", "text", "submit"]:
+                        payload[name] = val
+
+            action = form.get("action") or url
+            post_url = urljoin(url, action)
+            method = (form.get("method") or "POST").upper()
+            try:
+                if method == "POST":
+                    resp = requests.post(post_url, headers=BROWSER_HEADERS, data=payload, timeout=15, verify=False)
+                else:
+                    resp = requests.get(post_url, headers=BROWSER_HEADERS, params=payload, timeout=15, verify=False)
+                if resp.status_code == 200 and len(resp.text) > len(html) * 0.4:
+                    return resp.text
+            except Exception:
+                pass
+    return html
+
+# Discovers pagination links on the directory page (e.g. ?page=2, ?p=2, next page)
+def discover_pagination_urls(base_url: str, html: str, max_pages: int = 4) -> list:
+    soup = BeautifulSoup(html, "html.parser")
+    parsed_base = urlparse(base_url)
+    base_domain = parsed_base.netloc.lower()
+    pagination_links = []
+    seen = {base_url.split("#")[0]}
+
+    for a in soup.find_all("a", href=True):
+        href = a.get("href", "").strip()
+        full_url = urljoin(base_url, href).split("#")[0]
+        parsed_target = urlparse(full_url)
+        if parsed_target.netloc.lower() != base_domain:
+            continue
+
+        query = parsed_target.query.lower()
+        classes = " ".join(a.get("class", [])).lower()
+        rel = (a.get("rel") or [""])[0].lower() if isinstance(a.get("rel"), list) else str(a.get("rel") or "").lower()
+
+        is_page_param = any(param in query for param in ["page=", "p=", "pg=", "pagenum=", "start="])
+        is_page_rel = rel in ["next", "next page"]
+        is_page_class = any(c in classes for c in ["pagination", "page-numbers", "page-link", "next"])
+
+        if (is_page_param or is_page_rel or is_page_class) and full_url not in seen:
+            seen.add(full_url)
+            pagination_links.append(full_url)
+            if len(pagination_links) >= max_pages:
+                break
+
+    return pagination_links
+
+# Crawls pagination pages and combines their HTML
+def crawl_pagination_pages(base_url: str, initial_html: str, page_urls: list) -> str:
+    combined_html = [initial_html]
+    def fetch_p(p_url):
+        try:
+            r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=10, verify=False)
+            if r.status_code == 200:
+                return (p_url, r.text)
+        except Exception:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(fetch_p, u) for u in page_urls]
+        for f in as_completed(futures):
+            res = f.result()
+            if res:
+                p_url, p_html = res
+                combined_html.append(f"\n<!-- NEXT DIRECTORY PAGE: {p_url} -->\n{p_html}")
+    return "\n\n".join(combined_html)
+
+# Fetches web content handling standard GET, PDF documents, or form-based search portals
 def fetch_page_content(url: str) -> str:
-    # First attempt standard GET request
-    res = requests.get(url, headers=BROWSER_HEADERS, timeout=20)
+    clean_url = url.strip().strip('"\'[]<>').strip()
+    
+    # First attempt standard GET request with SSL verification fallback
+    try:
+        res = requests.get(clean_url, headers=BROWSER_HEADERS, timeout=20)
+    except requests.exceptions.SSLError:
+        # Fallback for schools with expired / self-signed SSL certs (e.g. Emory)
+        res = requests.get(clean_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
+
     if res.status_code == 403 or "challenges.cloudflare.com" in res.text or "Just a moment..." in res.text:
         raise RuntimeError("Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden).")
     res.raise_for_status()
+
+    # Check if document is a PDF
+    content_type = res.headers.get("Content-Type", "").lower()
+    if "application/pdf" in content_type or clean_url.lower().endswith(".pdf"):
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(res.content))
+            pages_text = []
+            for p_idx, page in enumerate(reader.pages):
+                pt = page.extract_text() or ""
+                if pt.strip():
+                    pages_text.append(pt)
+                if len(pages_text) >= 50:
+                    break
+            pdf_text = "\n\n".join(pages_text)
+        except Exception as pe:
+            raise RuntimeError(f"Could not read PDF document: {str(pe)}")
+
+        # Check if PDF contains email or phone / mobile number
+        has_email = bool(re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', pdf_text))
+        has_phone = bool(re.search(r'(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b', pdf_text))
+
+        if not (has_email or has_phone):
+            raise RuntimeError("PDF Skipped: Document contains no email addresses or mobile/phone numbers.")
+
+        return pdf_text
+
     html = res.text
+
+    # Auto-detect and submit department filter dropdowns (e.g. Southern Crescent Tech)
+    html = auto_submit_department_form(clean_url, html)
+
+    # Auto-detect directory pagination and crawl subsequent pages (e.g. South College, Wiregrass Tech)
+    p_urls = discover_pagination_urls(clean_url, html, max_pages=4)
+    if p_urls:
+        html = crawl_pagination_pages(clean_url, html, p_urls)
 
     # Check if page is an interactive form search portal like Augusta University
     if "search.php" in html and ("Filter by Unit" in html or 'name="college"' in html):
@@ -254,7 +441,7 @@ def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 40) -> 
     def fetch_one(entry):
         p_url, p_name = entry
         try:
-            r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=8)
+            r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=8, verify=False)
             if r.status_code == 200:
                 txt = sanitize_raw_html(r.text)
                 return (p_url, p_name, txt)
@@ -283,23 +470,24 @@ def fetch_node(state: ScraperState) -> ScraperState:
         raw_html = fetch_page_content(url)
         university = get_university_name(domain, raw_html)
 
-        # If page contains a massive multi-department table, isolate nursing rows
-        tr_blocks = re.findall(r'<tr[^>]*>.*?</tr>', raw_html, flags=re.DOTALL | re.IGNORECASE)
-        processed_html = raw_html
-        if len(tr_blocks) > 100:
-            header_tr = tr_blocks[0] if tr_blocks else ""
-            target_trs = [tr for tr in tr_blocks[1:] if "nurs" in tr.lower()]
-            # Retain contact info or heading block before the table
-            m = re.search(r'Contact Info.*?(?:Button HTML|<table)', raw_html, flags=re.DOTALL | re.IGNORECASE)
-            top_contact = m.group(0) if m else ""
-            processed_html = top_contact + "\n<table>\n" + header_tr + "\n" + "\n".join(target_trs) + "\n</table>"
+        # If content is extracted from a PDF, it is already clean text
+        if url.lower().endswith(".pdf") or not ("<html" in raw_html.lower() or "<body" in raw_html.lower()):
+            clean_text = raw_html
+        else:
+            # If page contains a massive multi-department table, isolate nursing rows
+            tr_blocks = re.findall(r'<tr[^>]*>.*?</tr>', raw_html, flags=re.DOTALL | re.IGNORECASE)
+            processed_html = raw_html
+            if len(tr_blocks) > 100:
+                header_tr = tr_blocks[0] if tr_blocks else ""
+                target_trs = [tr for tr in tr_blocks[1:] if "nurs" in tr.lower()]
+                m = re.search(r'Contact Info.*?(?:Button HTML|<table)', raw_html, flags=re.DOTALL | re.IGNORECASE)
+                top_contact = m.group(0) if m else ""
+                processed_html = top_contact + "\n<table>\n" + header_tr + "\n" + "\n".join(target_trs) + "\n</table>"
 
-        # Sanitize HTML into clean readable text
-        clean_text = sanitize_raw_html(processed_html)
+            # Sanitize HTML into clean readable text
+            clean_text = sanitize_raw_html(processed_html)
 
-        # Check if page has few emails and contains faculty profile links
-        email_matches = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', clean_text)
-        if len(email_matches) < 10:
+            # Always crawl individual faculty profile bio pages if candidate links exist
             profiles_text = crawl_faculty_profiles(url, raw_html)
             if profiles_text:
                 clean_text += "\n\n=== INDIVIDUAL FACULTY PROFILE BIO PAGES ===\n\n" + profiles_text
