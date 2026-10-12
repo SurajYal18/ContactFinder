@@ -104,6 +104,7 @@ def deduplicate_contacts(contacts: list) -> list:
 
 # Health check and environment configuration endpoint
 @app.get("/api/health")
+@app.get("/health")
 def health_check():
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path, override=True)
@@ -245,6 +246,7 @@ def process_single_url(url: str, prompt: str, enrich_provider: str, enrich_limit
 
 # Main scraping and extraction endpoint
 @app.post("/api/scrape")
+@app.post("/scrape")
 def scrape_directories(req: ScrapeRequest):
     if not req.urls:
         raise HTTPException(status_code=400, detail="At least one URL must be provided.")
@@ -392,6 +394,7 @@ def scrape_directories(req: ScrapeRequest):
 
 # Endpoint to download generated Excel spreadsheet
 @app.get("/api/download/{filename}")
+@app.get("/download/{filename}")
 def download_excel(filename: str):
     # Sanitize filename against directory traversal
     clean_name = os.path.basename(filename)
@@ -480,37 +483,52 @@ def find_directories_endpoint(payload: DirectorySearchRequest):
         "directories": results
     }
 
-@app.post("/api/extract-schools-from-file")
-@app.post("/extract-schools-from-file")
-async def extract_schools_from_file_endpoint(file: UploadFile = File(...)):
-    content = await file.read()
-    fname = (file.filename or "upload").lower()
-    suffix = os.path.splitext(fname)[1] or ".tmp"
+try:
+    import multipart  # noqa: F401
+    MULTIPART_AVAILABLE = True
+except ImportError:
+    MULTIPART_AVAILABLE = False
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=tempfile.gettempdir()) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+if MULTIPART_AVAILABLE:
+    @app.post("/api/extract-schools-from-file")
+    @app.post("/extract-schools-from-file")
+    async def extract_schools_from_file_endpoint(file: UploadFile = File(...)):
+        content = await file.read()
+        fname = (file.filename or "upload").lower()
+        suffix = os.path.splitext(fname)[1] or ".tmp"
 
-    try:
-        if fname.endswith(".pdf"):
-            schools = extract_schools_from_pdf(tmp_path)
-        elif fname.endswith((".xlsx", ".xls", ".csv")):
-            schools = extract_schools_from_excel(tmp_path)
-        else:
-            text = content.decode("utf-8", errors="ignore")
-            schools = extract_schools_from_text(text)
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=tempfile.gettempdir()) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
 
-    return {
-        "filename": file.filename,
-        "count": len(schools),
-        "schools": schools
-    }
+        try:
+            if fname.endswith(".pdf"):
+                schools = extract_schools_from_pdf(tmp_path)
+            elif fname.endswith((".xlsx", ".xls", ".csv")):
+                schools = extract_schools_from_excel(tmp_path)
+            else:
+                text = content.decode("utf-8", errors="ignore")
+                schools = extract_schools_from_text(text)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+
+        return {
+            "filename": file.filename,
+            "count": len(schools),
+            "schools": schools
+        }
+else:
+    @app.post("/api/extract-schools-from-file")
+    @app.post("/extract-schools-from-file")
+    async def extract_schools_from_file_fallback():
+        raise HTTPException(
+            status_code=501,
+            detail="File upload requires python-multipart to be installed on the server."
+        )
 
 # Frontend web UI directory paths
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
