@@ -5,7 +5,7 @@ import sys
 import uuid
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +33,13 @@ from urllib.parse import urlparse
 from src.workflow import create_scraper_graph
 from src.nodes.fetcher import get_university_name
 from src.nodes.exporter import export_contacts_to_excel
+from src.finder import (
+    find_directory_for_school,
+    extract_schools_from_text,
+    extract_schools_from_pdf,
+    extract_schools_from_excel,
+    deduplicate_school_names
+)
 
 # Create FastAPI application instance
 app = FastAPI(
@@ -74,6 +81,12 @@ class ScrapeRequest(BaseModel):
     enrich_limit: Optional[int] = Field(default=0, description="Max contacts to enrich with external APIs")
     # Custom output Excel filename
     output_filename: Optional[str] = Field(default=None, description="Optional custom output filename")
+    
+# Request schema for directory discovery
+class DirectorySearchRequest(BaseModel):
+    schools: Optional[List[str]] = Field(default=[], description="List of institution names")
+    text: Optional[str] = Field(default="", description="Raw pasted text containing institution names")
+    concurrency: Optional[int] = Field(default=5, description="Number of concurrent discovery workers")
 
 # Normalizes contact for deduplication
 def deduplicate_contacts(contacts: list) -> list:
@@ -378,11 +391,106 @@ def download_excel(filename: str):
         filename=clean_name
     )
 
+# ==========================================
+# Directory Finder Endpoints
+# ==========================================
+@app.post("/api/find-directories")
+@app.post("/find-directories")
+def find_directories_endpoint(payload: DirectorySearchRequest):
+    schools = []
+    if payload.text and payload.text.strip():
+        schools.extend(extract_schools_from_text(payload.text))
+    if payload.schools:
+        schools.extend(payload.schools)
+
+    schools = deduplicate_school_names(schools)
+    if not schools:
+        raise HTTPException(status_code=400, detail="No valid school names provided.")
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    workers = min(max(payload.concurrency, 1), 10)
+    results = []
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(find_directory_for_school, s, gemini_key): s for s in schools}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception as e:
+                s_name = futures[future]
+                results.append({
+                    "school": s_name,
+                    "directory_url": "",
+                    "status": f"Error: {e}",
+                    "is_ready_for_extractor": False
+                })
+
+    # Deduplicate results by normalized directory URL and school name
+    deduped = []
+    seen_urls = set()
+    seen_schools = set()
+    for r in results:
+        u = (r.get("directory_url") or "").rstrip('/').lower()
+        s = (r.get("school") or "").strip().lower()
+        if u and u in seen_urls:
+            continue
+        if s and s in seen_schools:
+            continue
+        if u:
+            seen_urls.add(u)
+        if s:
+            seen_schools.add(s)
+        deduped.append(r)
+
+    results = deduped
+    results.sort(key=lambda x: x.get("school", ""))
+    verified_count = sum(1 for r in results if r.get("is_ready_for_extractor"))
+
+    return {
+        "success": True,
+        "total": len(results),
+        "verified_count": verified_count,
+        "results": results
+    }
+
+@app.post("/api/extract-schools-from-file")
+@app.post("/extract-schools-from-file")
+async def extract_schools_from_file_endpoint(file: UploadFile = File(...)):
+    content = await file.read()
+    fname = (file.filename or "upload").lower()
+    suffix = os.path.splitext(fname)[1] or ".tmp"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=tempfile.gettempdir()) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        if fname.endswith(".pdf"):
+            schools = extract_schools_from_pdf(tmp_path)
+        elif fname.endswith((".xlsx", ".xls", ".csv")):
+            schools = extract_schools_from_excel(tmp_path)
+        else:
+            text = content.decode("utf-8", errors="ignore")
+            schools = extract_schools_from_text(text)
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    return {
+        "filename": file.filename,
+        "count": len(schools),
+        "schools": schools
+    }
+
 # Frontend web UI directory paths
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
+DIRECTORY_HTML = os.path.join(FRONTEND_DIR, "directory.html")
 
-# Serve index.html with strict no-cache headers so browsers always load fresh JS
+# Serve index.html (Contact Finder) with strict no-cache headers
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
 def serve_index():
@@ -398,6 +506,23 @@ def serve_index():
             }
         )
     raise HTTPException(status_code=404, detail="Frontend not found")
+
+# Serve directory.html (Directory Finder) with strict no-cache headers
+@app.get("/directory", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/directory.html", response_class=HTMLResponse, include_in_schema=False)
+def serve_directory():
+    if os.path.isfile(DIRECTORY_HTML):
+        with open(DIRECTORY_HTML, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+    raise HTTPException(status_code=404, detail="Directory Finder page not found")
 
 # Mount any other static assets (images, icons etc.) from the frontend folder
 if os.path.isdir(FRONTEND_DIR):

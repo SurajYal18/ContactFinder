@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Directory Finder - Automated Faculty Directory Discovery</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS for instant client-side Excel export & file parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .badge { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Logo & Branding -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i data-lucide="compass" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">Directory Finder</h1>
+          <p class="text-xs text-slate-400">Automated Faculty Directory Discovery & URL Validator</p>
+        </div>
+      </div>
+
+      <!-- Center Nav Tabs / Toggle Menu -->
+      <nav class="flex items-center bg-slate-950/90 p-1.5 rounded-xl border border-slate-800 shadow-inner">
+        <a href="/" class="px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200 cursor-pointer">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>Contact Finder</span>
+        </a>
+        <a href="/directory.html" class="px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition bg-indigo-600 text-white shadow-md shadow-indigo-600/30 cursor-pointer">
+          <i data-lucide="compass" class="w-4 h-4"></i>
+          <span>Directory Finder</span>
+        </a>
+      </nav>
+
+      <!-- Server Status Badge & Links -->
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        <div id="backend-status" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="status-dot"></span>
+          <span id="status-text" class="text-slate-300">Checking API...</span>
+        </div>
+        <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Connection Settings">
+          <i data-lucide="settings" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-grow">
+
+    <!-- Input & Status Configuration Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      
+      <!-- Left Column: Input Form (7 cols) -->
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="graduation-cap" class="w-5 h-5 text-indigo-400"></i>
+              <h2 class="font-semibold text-slate-100">School Names or Document</h2>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button type="button" onclick="clearAll()" class="text-xs text-slate-400 hover:text-rose-400 transition flex items-center space-x-1 cursor-pointer">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                <span>Clear All</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Input Switcher (Text vs. File Upload) -->
+          <div class="flex space-x-2 text-xs">
+            <button id="mode-text-btn" onclick="switchInputMode('text')" class="px-3.5 py-1.5 rounded-lg font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800 transition cursor-pointer">
+              <i data-lucide="type" class="w-3.5 h-3.5 inline mr-1"></i>Paste School Names
+            </button>
+            <button id="mode-file-btn" onclick="switchInputMode('file')" class="px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-white border border-slate-800 hover:bg-slate-800 transition cursor-pointer">
+              <i data-lucide="file-up" class="w-3.5 h-3.5 inline mr-1"></i>Upload PDF / Excel
+            </button>
+          </div>
+
+          <!-- Text Input Container -->
+          <div id="text-input-container" class="space-y-2">
+            <textarea id="schools-input" rows="6" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" placeholder="Enter school names (one per line or comma separated)...&#10;e.g.&#10;Emory University&#10;Auburn University&#10;Columbus State University"></textarea>
+            <p class="text-[11px] text-slate-500">You can also paste raw tables or text from state nursing board pass-rate documents.</p>
+          </div>
+
+          <!-- File Upload Container -->
+          <div id="file-input-container" class="hidden space-y-3">
+            <div id="drop-zone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-6 text-center bg-slate-950/40 hover:bg-slate-950/70 transition cursor-pointer" onclick="document.getElementById('file-upload-input').click()">
+              <input type="file" id="file-upload-input" accept=".pdf,.xlsx,.xls,.csv,.txt" class="hidden" onchange="handleFileUpload(event)">
+              <div class="flex flex-col items-center space-y-2">
+                <div class="w-10 h-10 rounded-full bg-indigo-950/60 border border-indigo-800/80 flex items-center justify-center text-indigo-400">
+                  <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                </div>
+                <p class="text-xs font-medium text-slate-200">Click to upload or drag & drop</p>
+                <p class="text-[11px] text-slate-400">State Board NCLEX PDF, Salesforce Contacts Excel (.xlsx, .csv)</p>
+              </div>
+            </div>
+            
+            <div id="file-chosen-banner" class="hidden p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+              <div class="flex items-center space-x-2 truncate">
+                <i data-lucide="file-check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+                <span id="file-chosen-name" class="font-medium text-slate-200 truncate">document.pdf</span>
+                <span id="file-chosen-count" class="px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 flex-shrink-0 text-[10px]">Ready</span>
+              </div>
+              <button onclick="clearUploadedFile()" class="text-slate-400 hover:text-rose-400 p-1 cursor-pointer">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filename Input (Optional) -->
+          <div class="pt-2 border-t border-slate-800/80">
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Spreadsheet Filename (Optional)</label>
+            <input type="text" id="filename-input" placeholder="Schools-Verified-Directories.xlsx" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <span class="text-[11px] text-slate-500">Default: Schools-Verified-Directories.xlsx</span>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-2">
+            <button id="find-btn" onclick="startDirectorySearch()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+              <span id="btn-text">Find Faculty Directories & Validate URLs</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Column: Status & Live Steps (5 cols) -->
+      <div class="lg:col-span-5 space-y-6">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5 h-full flex flex-col">
+          
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="activity" class="w-5 h-5 text-emerald-400"></i>
+              <h2 class="font-semibold text-slate-100">Execution Status</h2>
+            </div>
+            <span id="timer-badge" class="badge bg-slate-800 text-slate-400 border border-slate-700">Idle</span>
+          </div>
+
+          <!-- Stepper -->
+          <div class="space-y-3 flex-1">
+            <div id="step-1" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">1</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Parse School Names</p>
+                <p class="text-xs text-slate-500">Extracts and deduplicates school names from input or document.</p>
+              </div>
+            </div>
+
+            <div id="step-2" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">2</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">AI Directory Discovery</p>
+                <p class="text-xs text-slate-500">Locates official Nursing Faculty & Staff Directory URLs.</p>
+              </div>
+            </div>
+
+            <div id="step-3" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">3</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Validate Live URLs</p>
+                <p class="text-xs text-slate-500">Pings pages to eliminate 404s and generic homepages.</p>
+              </div>
+            </div>
+
+            <div id="step-4" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
+              <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">4</div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Export Verified Directories</p>
+                <p class="text-xs text-slate-500">Download CSV, Excel spreadsheet, or clean text URLs list.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity Log Area -->
+          <div class="bg-slate-950 rounded-xl p-3 border border-slate-800/80 font-mono text-xs text-slate-400 max-h-36 overflow-y-auto space-y-1" id="log-box">
+            <p class="text-slate-600">[Idle] Ready to process school names or files...</p>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Results Section (HIDDEN BY DEFAULT - Only shown after user searches) -->
+    <div id="results-section" class="hidden space-y-6 pt-4">
+
+      <!-- Metrics Stat Bar -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-indigo-950/60 border border-indigo-800/80 flex items-center justify-center text-indigo-400">
+            <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div id="stat-total-schools" class="text-2xl font-bold text-white">0</div>
+            <div class="text-xs text-slate-400">Total Schools</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-emerald-950/60 border border-emerald-800/80 flex items-center justify-center text-emerald-400">
+            <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div id="stat-verified-directories" class="text-2xl font-bold text-emerald-400">0</div>
+            <div class="text-xs text-slate-400">Verified Active (200)</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-amber-950/60 border border-amber-800/80 flex items-center justify-center text-amber-400">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div id="stat-waf-directories" class="text-2xl font-bold text-amber-400">0</div>
+            <div class="text-xs text-slate-400">Protected (WAF)</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-violet-950/60 border border-violet-800/80 flex items-center justify-center text-violet-400">
+            <i data-lucide="download" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div id="stat-ready-count" class="text-2xl font-bold text-violet-300">0</div>
+            <div class="text-xs text-slate-400">Ready for Export</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Main Results Card -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- Table Toolbar -->
+        <div class="p-5 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/50">
+          
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="setFilter('all')" id="filter-pill-all" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800 cursor-pointer">
+              All (<span id="filter-count-all">0</span>)
+            </button>
+            <button onclick="setFilter('verified')" id="filter-pill-verified" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 cursor-pointer">
+              Active (<span id="filter-count-verified">0</span>)
+            </button>
+            <button onclick="setFilter('waf')" id="filter-pill-waf" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 cursor-pointer">
+              Protected (<span id="filter-count-waf">0</span>)
+            </button>
+            
+            <!-- Search Box -->
+            <div class="relative ml-2">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5"></i>
+              <input type="text" id="search-filter-input" oninput="handleSearchFilter(event)" placeholder="Search school or URL..." class="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 sm:w-60">
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex flex-wrap items-center gap-2">
+            
+            <!-- Send Verified to Contact Finder Button (Bridge) -->
+            <button onclick="sendVerifiedToContactFinder()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition active:scale-95 cursor-pointer" title="Send all verified URLs straight into Contact Finder">
+              <i data-lucide="send" class="w-3.5 h-3.5"></i>
+              <span>Send Verified to Contact Finder &rarr;</span>
+            </button>
+
+            <!-- Download CSV Button -->
+            <button onclick="exportToCsv()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 hover:border-slate-600 shadow-sm transition active:scale-95 cursor-pointer" title="Download verified directories as CSV">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>CSV</span>
+            </button>
+
+            <!-- Excel Export Button -->
+            <button onclick="exportToExcel()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 hover:border-slate-600 shadow-sm transition active:scale-95 cursor-pointer" title="Download verified directories as Excel">
+              <i data-lucide="sheet" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Excel (.xlsx)</span>
+            </button>
+
+            <!-- Copy URLs Button -->
+            <button onclick="copyReadyUrlsToClipboard()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 hover:border-slate-600 shadow-sm transition active:scale-95 cursor-pointer" title="Copy verified URLs to clipboard">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>Copy URLs</span>
+            </button>
+
+            <!-- Clear All Button -->
+            <button onclick="clearAll()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 text-xs font-medium border border-slate-700 hover:border-rose-800 shadow-sm transition active:scale-95 cursor-pointer" title="Clear all inputs, logs and results">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              <span>Clear</span>
+            </button>
+
+          </div>
+
+        </div>
+
+        <!-- Table View -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-800 bg-slate-950/60 text-[11px] uppercase tracking-wider text-slate-400">
+                <th class="py-3 px-4 w-10 text-center">
+                  <input type="checkbox" id="master-select-all" checked onchange="toggleSelectAll(event)" class="rounded border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer">
+                </th>
+                <th class="py-3 px-4 w-12 text-center font-mono">#</th>
+                <th class="py-3 px-4 font-semibold">School / Institution</th>
+                <th class="py-3 px-4 font-semibold">Nursing Faculty Directory URL</th>
+                <th class="py-3 px-4 font-semibold">Verification Status</th>
+                <th class="py-3 px-4 text-center font-semibold w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="directory-table-body" class="divide-y divide-slate-800/60 text-xs">
+              <!-- Dynamically populated after search -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty Filter State -->
+        <div id="table-empty-state" class="hidden p-8 text-center space-y-2">
+          <p class="text-sm font-medium text-slate-300">No matching directories found</p>
+          <p class="text-xs text-slate-500">Try changing your search query or filter selection.</p>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+          <h3 class="font-semibold text-sm text-white">API Connection Settings</h3>
+        </div>
+        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white p-1 cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Backend API Base URL:</label>
+          <input type="text" id="api-url-input" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" placeholder="Leave empty for current domain">
+        </div>
+        <p class="text-slate-500 text-[11px]">Leave as default for automatic detection on Vercel or local FastAPI server.</p>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+        <button onclick="toggleSettingsModal()" class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+        <button onclick="saveSettings()" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white cursor-pointer">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-indigo-500/50 shadow-2xl text-xs font-medium text-white">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-message">Action successful</span>
+  </div>
+
+  <!-- Core JavaScript Logic -->
+  <script>
+    // State variables
+    let currentDirectories = [];
+    let selectedUrls = new Set();
+    let currentFilter = "all";
+    let searchQuery = "";
+    let timerInterval = null;
+    let secondsElapsed = 0;
+
+    const storedApi = localStorage.getItem("faculty_scraper_api") || localStorage.getItem("directory_finder_api");
+    const isLocal = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+    let API_BASE = (!isLocal && window.location.protocol.startsWith("http"))
+      ? (storedApi && !storedApi.includes("127.0.0.1") && !storedApi.includes("localhost") ? storedApi : window.location.origin)
+      : (storedApi || (window.location.protocol.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000"));
+
+    function init() {
+      try {
+        if (window.lucide && typeof lucide.createIcons === "function") {
+          lucide.createIcons();
+        }
+      } catch (e) {
+        console.warn("Lucide warning:", e);
+      }
+      
+      const apiInput = document.getElementById("api-url-input");
+      if (apiInput) apiInput.value = API_BASE;
+
+      checkHealth();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+
+    async function checkHealth() {
+      const dot = document.getElementById("status-dot");
+      const text = document.getElementById("status-text");
+      if (!dot || !text) return;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const res = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+          text.textContent = "Server Online";
+        } else {
+          throw new Error();
+        }
+      } catch (e) {
+        dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        text.textContent = "Server Offline";
+      }
+    }
+
+    // Input mode toggle (Text vs File)
+    function switchInputMode(mode) {
+      const textBtn = document.getElementById("mode-text-btn");
+      const fileBtn = document.getElementById("mode-file-btn");
+      const textContainer = document.getElementById("text-input-container");
+      const fileContainer = document.getElementById("file-input-container");
+
+      if (mode === 'text') {
+        textBtn.className = "px-3.5 py-1.5 rounded-lg font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800 transition cursor-pointer";
+        fileBtn.className = "px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-white border border-slate-800 hover:bg-slate-800 transition cursor-pointer";
+        textContainer.classList.remove("hidden");
+        fileContainer.classList.add("hidden");
+      } else {
+        fileBtn.className = "px-3.5 py-1.5 rounded-lg font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800 transition cursor-pointer";
+        textBtn.className = "px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-white border border-slate-800 hover:bg-slate-800 transition cursor-pointer";
+        fileContainer.classList.remove("hidden");
+        textContainer.classList.add("hidden");
+      }
+    }
+
+    // Clear all inputs, files, results, and reset state
+    function clearAll() {
+      document.getElementById("schools-input").value = "";
+      clearUploadedFile();
+      const fnInput = document.getElementById("filename-input");
+      if (fnInput) fnInput.value = "";
+      
+      currentDirectories = [];
+      selectedUrls.clear();
+      searchQuery = "";
+      currentFilter = "all";
+      const searchBox = document.getElementById("search-filter-input");
+      if (searchBox) searchBox.value = "";
+
+      if (timerInterval) clearInterval(timerInterval);
+      secondsElapsed = 0;
+      const timerBadge = document.getElementById("timer-badge");
+      if (timerBadge) {
+        timerBadge.textContent = "Idle";
+        timerBadge.className = "badge bg-slate-800 text-slate-400 border border-slate-700";
+      }
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        if (el) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition";
+          const icon = el.querySelector(".step-icon");
+          if (icon) {
+            icon.className = "step-icon w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold";
+            icon.innerHTML = i;
+          }
+        }
+      }
+
+      const logBox = document.getElementById("log-box");
+      if (logBox) {
+        logBox.innerHTML = '<p class="text-slate-600">[Idle] Ready to process school names or files...</p>';
+      }
+
+      const resultsSection = document.getElementById("results-section");
+      if (resultsSection) resultsSection.classList.add("hidden");
+      const tbody = document.getElementById("directory-table-body");
+      if (tbody) tbody.innerHTML = "";
+
+      const btn = document.getElementById("find-btn");
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-not-allowed");
+      }
+      const btnText = document.getElementById("btn-text");
+      if (btnText) btnText.textContent = "Find Faculty Directories & Validate URLs";
+
+      showToast("All inputs, logs, and directory results cleared.");
+    }
+
+    // Handle file upload
+    async function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const banner = document.getElementById("file-chosen-banner");
+      const nameEl = document.getElementById("file-chosen-name");
+      const countEl = document.getElementById("file-chosen-count");
+
+      nameEl.textContent = file.name;
+      countEl.textContent = "Extracting schools...";
+      banner.classList.remove("hidden");
+      addLog(`Attached document: ${file.name}. Extracting institution names...`);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch(`${API_BASE}/api/extract-schools-from-file`, {
+          method: "POST",
+          body: formData
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const schools = data.schools || [];
+          countEl.textContent = `${schools.length} schools extracted`;
+          document.getElementById("schools-input").value = schools.join("\n");
+          addLog(`Extracted ${schools.length} unique institutions from ${file.name}`);
+          showToast(`Extracted ${schools.length} institutions from ${file.name}`);
+          return;
+        }
+      } catch (e) {
+        console.warn("Backend file extraction failed, trying local parsing:", e);
+      }
+
+      // Client-side fallback for spreadsheets and text files
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+            
+            const schools = [];
+            json.forEach(row => {
+              if (row && row[0]) {
+                const val = String(row[0]).trim();
+                if (val && val.length > 3 && !['school', 'institution', 'college', 'name'].includes(val.toLowerCase())) {
+                  schools.push(val);
+                }
+              }
+            });
+            countEl.textContent = `${schools.length} schools`;
+            document.getElementById("schools-input").value = schools.join("\n");
+            addLog(`Loaded ${schools.length} schools from spreadsheet: ${file.name}`);
+          } catch (err) {
+            console.error("Spreadsheet read error:", err);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (ext === 'txt') {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById("schools-input").value = e.target.result;
+          const count = e.target.result.split('\n').filter(Boolean).length;
+          countEl.textContent = `${count} lines`;
+          addLog(`Loaded ${count} schools from file: ${file.name}`);
+        };
+        reader.readAsText(file);
+      } else {
+        countEl.textContent = "Document attached";
+        addLog(`Document attached: ${file.name}`);
+      }
+    }
+
+    function clearUploadedFile() {
+      document.getElementById("file-upload-input").value = "";
+      document.getElementById("file-chosen-banner").classList.add("hidden");
+    }
+
+    // Stepper updates
+    function setStep(stepNum) {
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        const icon = el.querySelector(".step-icon");
+        if (i < stepNum) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold";
+          icon.innerHTML = "✓";
+        } else if (i === stepNum) {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/50 shadow-md shadow-indigo-500/10 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold animate-pulse";
+          icon.innerHTML = i;
+        } else {
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-xs font-bold";
+          icon.innerHTML = i;
+        }
+      }
+    }
+
+    // Logger
+    function addLog(msg) {
+      const box = document.getElementById("log-box");
+      const p = document.createElement("p");
+      const time = new Date().toLocaleTimeString();
+      p.textContent = `[${time}] ${msg}`;
+      box.appendChild(p);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // Main Directory Search Execution
+    async function startDirectorySearch() {
+      let rawText = document.getElementById("schools-input").value.trim();
+      const fileInput = document.getElementById("file-upload-input");
+      const file = fileInput.files[0];
+
+      if (!rawText && !file) {
+        alert("Please enter school names or upload a document.");
+        return;
+      }
+
+      const btn = document.getElementById("find-btn");
+      const btnText = document.getElementById("btn-text");
+      const timerBadge = document.getElementById("timer-badge");
+
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-not-allowed");
+      btnText.textContent = "Discovering & Validating Directories...";
+      timerBadge.textContent = "Running (0s)";
+      timerBadge.className = "badge bg-indigo-950 text-indigo-300 border border-indigo-800 animate-pulse";
+
+      secondsElapsed = 0;
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        timerBadge.textContent = `Running (${secondsElapsed}s)`;
+      }, 1000);
+
+      document.getElementById("log-box").innerHTML = "";
+      addLog("Starting automated faculty directory discovery...");
+      setStep(1);
+
+      if (!rawText && file) {
+        addLog(`Extracting institutions from attached document: ${file.name}...`);
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const res = await fetch(`${API_BASE}/api/extract-schools-from-file`, {
+            method: "POST",
+            body: formData
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const extracted = data.schools || [];
+            rawText = extracted.join("\n");
+            document.getElementById("schools-input").value = rawText;
+            addLog(`Extracted ${extracted.length} schools from ${file.name}`);
+          }
+        } catch (e) {
+          addLog(`Notice: Failed to extract schools from ${file.name}: ${e.message}`);
+        }
+      }
+
+      let schools = [];
+      if (rawText) {
+        const lines = rawText.split('\n').map(s => s.trim()).filter(Boolean);
+        const seen = new Set();
+        for (let s of lines) {
+          let clean = s.trim();
+          if (!clean) continue;
+
+          if (clean.startsWith('http://') || clean.startsWith('https://')) {
+            const key = clean.toLowerCase().replace(/\/+$/, '');
+            if (!seen.has(key)) {
+              seen.add(key);
+              schools.push(clean);
+            }
+            continue;
+          }
+
+          clean = clean.replace(/\b(Associates?|Bachelors?|Pre-Licensure|Masters?|Doctorate|BSN|MSN|DNP|RN)\b.*$/i, '').trim();
+          clean = clean.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+          const key = clean.toLowerCase();
+          if (key.length >= 3 && !seen.has(key)) {
+            seen.add(key);
+            schools.push(clean);
+          }
+        }
+      }
+
+      if (schools.length === 0) {
+        alert("No valid institution names could be extracted.");
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-not-allowed");
+        btnText.textContent = "Find Faculty Directories & Validate URLs";
+        clearInterval(timerInterval);
+        timerBadge.textContent = "Idle";
+        timerBadge.className = "badge bg-slate-800 text-slate-400 border border-slate-700";
+        return;
+      }
+
+      addLog(`Prepared ${schools.length} unique schools for AI directory discovery.`);
+      setStep(2);
+
+      try {
+        const res = await fetch(`${API_BASE}/api/find-directories`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ schools: schools, concurrency: 5 })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server returned HTTP ${res.status}`);
+        }
+
+        setStep(3);
+        const data = await res.json();
+        const directories = data.directories || [];
+        
+        currentDirectories = directories;
+        selectedUrls = new Set(directories.filter(d => d.ready).map(d => d.url));
+
+        addLog(`Discovery & verification complete. Found ${data.ready_count || 0} active faculty directory links.`);
+        setStep(4);
+
+        // Update metrics
+        document.getElementById("stat-total-schools").textContent = data.total || schools.length;
+        document.getElementById("stat-verified-directories").textContent = data.verified_count || 0;
+        document.getElementById("stat-waf-directories").textContent = data.waf_count || 0;
+        document.getElementById("stat-ready-count").textContent = data.ready_count || 0;
+
+        document.getElementById("results-section").classList.remove("hidden");
+        renderTable();
+
+        showToast(`Discovered ${data.ready_count || 0} active faculty directories!`);
+      } catch (err) {
+        addLog(`Error during directory search: ${err.message}`);
+        alert(`Discovery error: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-not-allowed");
+        btnText.textContent = "Find Faculty Directories & Validate URLs";
+        clearInterval(timerInterval);
+        timerBadge.textContent = `Completed (${secondsElapsed}s)`;
+        timerBadge.className = "badge bg-emerald-950 text-emerald-300 border border-emerald-800";
+      }
+    }
+
+    // Render Results Table
+    function renderTable() {
+      const tbody = document.getElementById("directory-table-body");
+      const emptyState = document.getElementById("table-empty-state");
+      tbody.innerHTML = "";
+
+      let filtered = currentDirectories.filter(item => {
+        if (currentFilter === "verified") return item.ready;
+        if (currentFilter === "waf") return !item.ready && item.status.includes("Protected");
+        return true;
+      });
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(item => 
+          (item.school && item.school.toLowerCase().includes(q)) ||
+          (item.url && item.url.toLowerCase().includes(q)) ||
+          (item.status && item.status.toLowerCase().includes(q))
+        );
+      }
+
+      document.getElementById("filter-count-all").textContent = currentDirectories.length;
+      document.getElementById("filter-count-verified").textContent = currentDirectories.filter(d => d.ready).length;
+      document.getElementById("filter-count-waf").textContent = currentDirectories.filter(d => !d.ready && d.status.includes("Protected")).length;
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove("hidden");
+        return;
+      }
+      emptyState.classList.add("hidden");
+
+      filtered.forEach((item, index) => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-900/50 transition";
+
+        const isChecked = selectedUrls.has(item.url);
+        const encodedUrl = encodeURIComponent(item.url);
+
+        let statusBadge = '';
+        if (item.ready) {
+          statusBadge = '<span class="badge bg-emerald-950 text-emerald-300 border border-emerald-800">Verified Active (200)</span>';
+        } else if (item.status && item.status.includes("Protected")) {
+          statusBadge = '<span class="badge bg-amber-950 text-amber-300 border border-amber-800">Protected (WAF)</span>';
+        } else {
+          statusBadge = `<span class="badge bg-rose-950 text-rose-300 border border-rose-800">${item.status || 'Unreachable'}</span>`;
+        }
+
+        tr.innerHTML = `
+          <td class="py-3 px-4 text-center">
+            <input type="checkbox" ${isChecked ? "checked" : ""} onchange="toggleSelectUrl('${encodedUrl}', event)" class="rounded border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer">
+          </td>
+          <td class="py-3 px-4 text-center font-mono text-slate-500">${index + 1}</td>
+          <td class="py-3 px-4 font-medium text-slate-200">${item.school || 'Unknown School'}</td>
+          <td class="py-3 px-4 font-mono text-indigo-400 truncate max-w-md">
+            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="hover:underline flex items-center space-x-1">
+              <span class="truncate">${item.url}</span>
+              <i data-lucide="external-link" class="w-3 h-3 flex-shrink-0 opacity-70"></i>
+            </a>
+          </td>
+          <td class="py-3 px-4">${statusBadge}</td>
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center space-x-1">
+              <button onclick="copySingleUrl('${encodedUrl}')" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer" title="Copy URL">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+              <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition" title="Open Directory">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+              </a>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      if (window.lucide && typeof lucide.createIcons === "function") {
+        lucide.createIcons();
+      }
+    }
+
+    function toggleSelectUrl(encodedUrl, event) {
+      const url = decodeURIComponent(encodedUrl);
+      if (event.target.checked) {
+        selectedUrls.add(url);
+      } else {
+        selectedUrls.delete(url);
+      }
+      const master = document.getElementById("master-select-all");
+      const verifiedTotal = currentDirectories.filter(d => d.ready).length;
+      if (master) master.checked = (selectedUrls.size === verifiedTotal && verifiedTotal > 0);
+    }
+
+    function toggleSelectAll(event) {
+      if (event.target.checked) {
+        currentDirectories.filter(d => d.ready).forEach(d => selectedUrls.add(d.url));
+      } else {
+        selectedUrls.clear();
+      }
+      renderTable();
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      const pills = {
+        all: document.getElementById("filter-pill-all"),
+        verified: document.getElementById("filter-pill-verified"),
+        waf: document.getElementById("filter-pill-waf")
+      };
+      for (const [k, el] of Object.entries(pills)) {
+        if (k === filter) {
+          el.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800 cursor-pointer";
+        } else {
+          el.className = "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 cursor-pointer";
+        }
+      }
+      renderTable();
+    }
+
+    function handleSearchFilter(e) {
+      searchQuery = e.target.value.trim();
+      renderTable();
+    }
+
+    function copySingleUrl(encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      navigator.clipboard.writeText(url).then(() => {
+        showToast("Copied URL to clipboard!");
+      });
+    }
+
+    function getVerifiedDirectoriesToExport() {
+      const verified = currentDirectories.filter(d => d.ready);
+      if (selectedUrls.size > 0) {
+        const selectedVerified = verified.filter(d => selectedUrls.has(d.url));
+        if (selectedVerified.length > 0) {
+          return selectedVerified;
+        }
+      }
+      return verified;
+    }
+
+    // Workflow Bridge: Send Verified to Contact Finder
+    function sendVerifiedToContactFinder() {
+      const verifiedList = getVerifiedDirectoriesToExport();
+      if (verifiedList.length === 0) {
+        showToast("No verified directory URLs to transfer.");
+        return;
+      }
+
+      const urls = verifiedList.map(d => d.url);
+      localStorage.setItem("pending_contact_urls", JSON.stringify(urls));
+      window.location.href = "/";
+    }
+
+    function copyReadyUrlsToClipboard() {
+      const verifiedList = getVerifiedDirectoriesToExport();
+      if (verifiedList.length === 0) {
+        showToast("No verified directory URLs to copy.");
+        return;
+      }
+
+      const urlsToCopy = verifiedList.map(d => d.url);
+      navigator.clipboard.writeText(urlsToCopy.join("\n")).then(() => {
+        showToast(`Copied ${urlsToCopy.length} verified URLs to clipboard!`);
+      });
+    }
+
+    function exportToCsv() {
+      const verifiedList = getVerifiedDirectoriesToExport();
+      if (verifiedList.length === 0) {
+        showToast("No verified directories to export.");
+        return;
+      }
+      const filenameInput = document.getElementById("filename-input").value.trim();
+      const baseName = filenameInput ? filenameInput.replace(/\.[^/.]+$/, "") : "Schools-Verified-Directories";
+
+      const rows = verifiedList.map(d => ({
+        "School Name": d.school,
+        "Nursing Faculty Directory URL": d.url,
+        "Verification Status": d.status
+      }));
+
+      if (typeof XLSX !== "undefined") {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${baseName}.csv`;
+        a.click();
+        showToast(`Downloaded ${rows.length} verified directories (${baseName}.csv)`);
+      } else {
+        const header = ["School Name", "Nursing Faculty Directory URL", "Verification Status"];
+        const csvRows = [header.join(",")];
+        rows.forEach(r => {
+          const vals = [
+            `"${(r["School Name"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Nursing Faculty Directory URL"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Verification Status"] || "").replace(/"/g, '""')}"`
+          ];
+          csvRows.push(vals.join(","));
+        });
+        const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${baseName}.csv`;
+        a.click();
+        showToast(`Downloaded ${rows.length} verified directories (${baseName}.csv)`);
+      }
+    }
+
+    function exportToExcel() {
+      if (typeof XLSX === "undefined") {
+        showToast("SheetJS library is loading, please try again in a moment.");
+        return;
+      }
+
+      const verifiedList = getVerifiedDirectoriesToExport();
+      if (verifiedList.length === 0) {
+        showToast("No verified directories to export.");
+        return;
+      }
+
+      const filenameInput = document.getElementById("filename-input").value.trim();
+      const baseName = filenameInput ? filenameInput.replace(/\.[^/.]+$/, "") : "Schools-Verified-Directories";
+      const outFilename = `${baseName}.xlsx`;
+
+      const rows = verifiedList.map(d => ({
+        "School Name": d.school,
+        "Nursing Faculty Directory URL": d.url,
+        "Verification Status": d.status
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 45 },
+        { wch: 80 },
+        { wch: 35 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Verified Directories");
+      XLSX.writeFile(wb, outFilename);
+      showToast(`Downloaded ${rows.length} verified directories (${outFilename})`);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      const label = document.getElementById("toast-message");
+      if (!toast || !label) return;
+
+      label.textContent = msg;
+      toast.classList.remove("translate-y-20", "opacity-0", "pointer-events-none");
+      toast.classList.add("translate-y-0", "opacity-100");
+
+      setTimeout(() => {
+        toast.classList.remove("translate-y-0", "opacity-100");
+        toast.classList.add("translate-y-20", "opacity-0", "pointer-events-none");
+      }, 3000);
+    }
+
+    function toggleSettingsModal() {
+      const modal = document.getElementById("settings-modal");
+      modal.classList.toggle("hidden");
+    }
+
+    function saveSettings() {
+      API_BASE = document.getElementById("api-url-input").value.trim().replace(/\/$/, "");
+      localStorage.setItem("directory_finder_api", API_BASE);
+      localStorage.setItem("faculty_scraper_api", API_BASE);
+      toggleSettingsModal();
+      checkHealth();
+    }
+  </script>
+</body>
+</html>

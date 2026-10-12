@@ -6,7 +6,7 @@
   <meta http-equiv="Expires" content="0">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contact Finder - Automated Contact & Email Discovery</title>
+  <title>Contact Finder - University Directory Scraper</title>
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -17,37 +17,70 @@
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
     .badge { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    @keyframes pulse-highlight {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+      50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.4); border-color: rgb(129, 140, 248); }
+    }
+    .highlight-pulse {
+      animation: pulse-highlight 1.5s ease-in-out 2;
+    }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
 
   <!-- Top Navigation Header -->
   <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
       <div class="flex items-center space-x-3">
         <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <i data-lucide="users" class="w-6 h-6 text-white"></i>
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">Contact Finder</h1>
-          <p class="text-xs text-slate-400">Automated Contact & Email Discovery</p>
+          <p class="text-xs text-slate-400">Faculty Contact Scraper & Excel Exporter</p>
         </div>
       </div>
 
-      <div class="flex items-center space-x-4">
+      <!-- Center Nav Tabs / Toggle Menu -->
+      <nav class="flex items-center bg-slate-950/90 p-1.5 rounded-xl border border-slate-800 shadow-inner">
+        <a href="/" class="px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition bg-indigo-600 text-white shadow-md shadow-indigo-600/30 cursor-pointer">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>Contact Finder</span>
+        </a>
+        <a href="/directory.html" class="px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition text-slate-400 hover:text-slate-200 cursor-pointer">
+          <i data-lucide="compass" class="w-4 h-4"></i>
+          <span>Directory Finder</span>
+        </a>
+      </nav>
+
+      <!-- Right Header Actions -->
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        <!-- Server Status Badge -->
         <div id="backend-status" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
           <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="status-dot"></span>
           <span id="status-text" class="text-slate-300">Checking API...</span>
         </div>
-        <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition" title="Connection Settings">
+
+        <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Connection Settings">
           <i data-lucide="settings" class="w-5 h-5"></i>
         </button>
       </div>
+
     </div>
   </header>
 
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-12 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="bg-indigo-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 border border-indigo-400/30">
+      <i data-lucide="check-circle" class="w-5 h-5 text-indigo-200"></i>
+      <span id="toast-message" class="text-xs font-medium">Notification</span>
+    </div>
+  </div>
+
   <!-- Main Container -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-grow">
 
     <!-- Hero / Input Configuration Section -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -58,7 +91,7 @@
           <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
             <div class="flex items-center space-x-2">
               <i data-lucide="globe" class="w-5 h-5 text-indigo-400"></i>
-              <h2 class="font-semibold text-slate-100">Contact URLs</h2>
+              <h3 class="font-semibold text-slate-100">Contact URLs</h3>
             </div>
             <div class="flex items-center space-x-2">
               <span class="text-xs text-slate-400 hidden sm:inline">Separate with commas or newlines</span>
@@ -72,7 +105,14 @@
 
           <!-- URL Inputs -->
           <div class="space-y-2">
-            <textarea id="urls-input" rows="5" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" placeholder="Paste contact URLs here (separate multiple URLs with commas or new lines)..."></textarea>
+            <textarea id="urls-input" rows="6" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" placeholder="Paste contact directory URLs here (separate multiple URLs with commas or new lines)...&#10;e.g.&#10;https://www.south.edu/faculty/&#10;https://chipola.edu/academics/academic-departments/health-sciences/nursing/faculty/"></textarea>
+            <div class="flex items-center justify-between text-[11px] text-slate-500">
+              <span>Supports individual directory and department roster pages.</span>
+              <a id="inline-link-directory-finder" href="http://127.0.0.1:8001" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1">
+                <span>Need URLs? Use Directory Finder</span>
+                <i data-lucide="external-link" class="w-3 h-3"></i>
+              </a>
+            </div>
           </div>
 
           <!-- Options -->
@@ -117,7 +157,7 @@
 
           <!-- Submit Button -->
           <div class="pt-2">
-            <button id="scrape-btn" onclick="startScrape()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <button id="scrape-btn" onclick="startScrape()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
               <i data-lucide="play" class="w-5 h-5 fill-current"></i>
               <span id="btn-text">Find Contacts & Export Excel</span>
             </button>
@@ -131,12 +171,12 @@
           <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
             <div class="flex items-center space-x-2">
               <i data-lucide="activity" class="w-5 h-5 text-emerald-400"></i>
-              <h2 class="font-semibold text-slate-100">Execution Status</h2>
+              <h3 class="font-semibold text-slate-100">Execution Status</h3>
             </div>
             <span id="timer-badge" class="badge bg-slate-800 text-slate-400 border border-slate-700">Idle</span>
           </div>
 
-          <!-- Simple Stepper -->
+          <!-- Stepper -->
           <div class="space-y-3 flex-1">
             <div id="step-1" class="flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition">
               <div class="step-icon w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 mt-0.5 font-bold">1</div>
@@ -171,80 +211,60 @@
             </div>
           </div>
 
-          <!-- Activity Log Area -->
-          <div class="bg-slate-950 rounded-xl p-3 border border-slate-800/80 font-mono text-xs text-slate-400 max-h-36 overflow-y-auto space-y-1" id="log-box">
+          <!-- Console Output -->
+          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-400 h-32 overflow-y-auto space-y-1" id="console-output">
             <p class="text-slate-600">// Ready. Enter contact URLs and click Find Contacts.</p>
           </div>
         </div>
       </div>
+
     </div>
 
-    <!-- Results Section (Visible after extraction) -->
-    <section id="results-section" class="space-y-5 hidden">
-      
-      <!-- Metrics Overview Cards (6 Columns with Counts) -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Total Extracted</p>
-          <p id="metric-total" class="text-2xl sm:text-3xl font-bold text-indigo-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Unique Contacts</p>
-          <p id="metric-unique" class="text-2xl sm:text-3xl font-bold text-slate-100 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Successful Links</p>
-          <p id="metric-success-links" class="text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Failed Links</p>
-          <p id="metric-failed-links" class="text-2xl sm:text-3xl font-bold text-rose-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Emails Found</p>
-          <p id="metric-emails" class="text-2xl sm:text-3xl font-bold text-sky-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <p class="text-xs text-slate-400 font-medium">Phones Found</p>
-          <p id="metric-phones" class="text-2xl sm:text-3xl font-bold text-amber-400 mt-1">0</p>
-        </div>
+    <!-- Metrics Row -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Total Extracted</div>
+        <div class="text-3xl font-extrabold text-slate-100" id="metric-total">0</div>
       </div>
 
-      <!-- Compact Collapsible Failed Links Bar (Clean, simple, non-intrusive) -->
-      <div id="failed-urls-summary-card" class="hidden p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between transition">
-        <div class="flex items-center space-x-2.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-rose-400 flex-shrink-0"></span>
-          <p class="text-sm text-slate-200">
-            <span id="failed-count-badge" class="font-bold text-rose-400">0</span> link(s) could not be extracted
-          </p>
-          <span class="text-xs text-slate-500 hidden md:inline">(Cloudflare protected, PDF, or non-directory)</span>
-        </div>
-        <button id="toggle-failed-btn" onclick="toggleFailedDrawer()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer">
-          <span id="failed-toggle-label">View Failed Links</span>
-          <i data-lucide="chevron-down" id="failed-toggle-chevron" class="w-3.5 h-3.5"></i>
-        </button>
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-1">Unique Contacts</div>
+        <div class="text-3xl font-extrabold text-indigo-400" id="metric-unique">0</div>
       </div>
 
-      <!-- Collapsible Drawer for Failed Links -->
-      <div id="failed-urls-drawer" class="hidden p-3 bg-slate-950/90 rounded-xl border border-slate-800/80 max-h-56 overflow-y-auto space-y-1.5">
-        <!-- Compact list populated dynamically -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1">Successful Links</div>
+        <div class="text-3xl font-extrabold text-emerald-400" id="metric-success">0</div>
       </div>
 
-      <!-- Table Toolbar -->
-      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
-          <div class="relative w-full max-w-md">
-            <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <input type="text" id="table-search" oninput="filterTable()" placeholder="Search contacts by school, name, title, email, phone..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-          </div>
-          <span id="filtered-count" class="text-xs text-slate-400 whitespace-nowrap">Showing 0 contacts</span>
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-1">Failed Links</div>
+        <div class="text-3xl font-extrabold text-rose-400" id="metric-failed">0</div>
+      </div>
+
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-teal-400 mb-1">Emails Found</div>
+        <div class="text-3xl font-extrabold text-teal-400" id="metric-emails">0</div>
+      </div>
+
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="text-xs font-semibold uppercase tracking-wider text-cyan-400 mb-1">Phones Found</div>
+        <div class="text-3xl font-extrabold text-cyan-400" id="metric-phones">0</div>
+      </div>
+    </div>
+
+    <!-- Contacts Table Section -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl shadow-xl overflow-hidden space-y-4 p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div>
+          <h3 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+            <span>Extracted Contacts</span>
+            <span id="results-count" class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">0 records</span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-1">Review live contacts and export as formatted Excel.</p>
         </div>
 
         <div class="flex items-center space-x-3">
-          <button id="clear-results-btn" onclick="clearAll()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm border border-slate-700 hover:border-rose-900/60 hover:text-rose-400 transition flex items-center space-x-1.5 cursor-pointer" title="Clear results and start a new extraction">
-            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-            <span>New Request / Clear</span>
-          </button>
           <button id="download-btn" onclick="downloadExcelSpreadsheet()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
             <span>Download Excel (.xlsx)</span>
@@ -252,100 +272,136 @@
         </div>
       </div>
 
-      <!-- Data Table -->
-      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-        <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table class="w-full text-left border-collapse text-sm">
-            <thead class="bg-slate-950/80 sticky top-0 z-10 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-semibold">
-              <tr>
-                <th class="py-3.5 px-4 w-12 text-center">#</th>
-                <th class="py-3.5 px-4">School</th>
-                <th class="py-3.5 px-4">First Name</th>
-                <th class="py-3.5 px-4">Last Name</th>
-                <th class="py-3.5 px-4">Title</th>
-                <th class="py-3.5 px-4">Credentials</th>
-                <th class="py-3.5 px-4">Email</th>
-                <th class="py-3.5 px-4">Phone</th>
-                <th class="py-3.5 px-4">Campus</th>
-              </tr>
-            </thead>
-            <tbody id="table-body" class="divide-y divide-slate-800/60 font-normal">
-              <!-- Rendered dynamically -->
-            </tbody>
-          </table>
+      <!-- Filter & Search Controls -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center space-x-2 text-xs">
+          <button id="filter-all" onclick="filterTable('all')" class="px-3 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold cursor-pointer">All (<span id="count-all">0</span>)</button>
+          <button id="filter-email" onclick="filterTable('email')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer">With Email (<span id="count-email">0</span>)</button>
+          <button id="filter-phone" onclick="filterTable('phone')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer">With Phone (<span id="count-phone">0</span>)</button>
+        </div>
+
+        <div class="w-full sm:w-72">
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3 top-2.5"></i>
+            <input type="text" id="search-input" oninput="handleSearch(event)" placeholder="Search name, title, school..." class="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          </div>
         </div>
       </div>
-    </section>
+
+      <!-- Contacts Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-800">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-950/90 text-slate-400 font-semibold border-b border-slate-800">
+            <tr>
+              <th class="p-3">#</th>
+              <th class="p-3 font-semibold">Name</th>
+              <th class="p-3 font-semibold">Credentials</th>
+              <th class="p-3 font-semibold">Title</th>
+              <th class="p-3 font-semibold">School / Institution</th>
+              <th class="p-3 font-semibold">Campus</th>
+              <th class="p-3 font-semibold">Email</th>
+              <th class="p-3 font-semibold">Phone</th>
+            </tr>
+          </thead>
+          <tbody id="results-table-body" class="divide-y divide-slate-800/60 font-mono">
+            <tr>
+              <td colspan="8" class="p-8 text-center text-slate-500 font-sans text-xs">
+                No contacts found yet. Enter URLs above and click "Find Contacts & Export Excel".
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
 
   </main>
 
   <!-- Settings Modal -->
-  <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <h3 class="font-semibold text-slate-100 flex items-center gap-2">
-          <i data-lucide="settings-2" class="w-5 h-5 text-indigo-400"></i> Connection Settings
+  <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-slate-100 flex items-center space-x-2">
+          <i data-lucide="settings" class="w-5 h-5 text-indigo-400"></i>
+          <span>Connection Settings</span>
         </h3>
-        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white">
+        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white cursor-pointer">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1">Backend Server URL</label>
-        <input type="text" id="api-url-input" value="http://127.0.0.1:8000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        <span class="text-[11px] text-slate-500">Default local server address.</span>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Backend API Base URL</label>
+          <input type="text" id="api-url-input" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" placeholder="Leave empty for current domain">
+          <p class="text-[11px] text-slate-500 mt-1">Leave blank to use the current website origin automatically.</p>
+        </div>
       </div>
 
-      <div class="pt-2 flex justify-end">
-        <button onclick="saveSettings()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition">
-          Save Settings
-        </button>
+      <div class="pt-3 flex justify-end space-x-2 border-t border-slate-800">
+        <button onclick="toggleSettingsModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer">Cancel</button>
+        <button onclick="saveSettings()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer">Save Settings</button>
       </div>
     </div>
   </div>
 
-  <!-- JavaScript Logic -->
+  <!-- Core JavaScript -->
   <script>
-    let API_BASE = localStorage.getItem("faculty_scraper_api") || (window.location.protocol.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000");
+    // ==========================================
+    // Global State & API Configuration
+    // ==========================================
+    const storedApi = localStorage.getItem("faculty_scraper_api");
+    const isLocal = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+    let API_BASE = (!isLocal && window.location.protocol.startsWith("http"))
+      ? (storedApi && !storedApi.includes("127.0.0.1") && !storedApi.includes("localhost") ? storedApi : window.location.origin)
+      : (storedApi || (window.location.protocol.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000"));
+
     let extractedData = [];
     let currentExportFilename = "contacts_export.xlsx";
     let currentServerDownloadUrl = "";
     let timerInterval = null;
 
-    // Feature flags loaded from backend environment health check
-    let envStatus = {
-      enable_hunter: true,
-      enable_rocketreach: true
-    };
     let selectedProvider = "hunter";
+    const providerState = {
+      hunter: { enabled: true, configured: true },
+      rocketreach: { enabled: false, configured: false }
+    };
 
-    // Initialize safely even if DOM is already parsed
+    // ==========================================
+    // Initialization & Health Check
+    // ==========================================
     function init() {
+      const apiInput = document.getElementById("api-url-input");
+      if (apiInput) apiInput.value = API_BASE;
+      checkHealth();
+
+      // Check if user transferred verified directory URLs from Directory Finder
+      const pending = localStorage.getItem("pending_contact_urls");
+      if (pending) {
+        try {
+          const urls = JSON.parse(pending);
+          if (Array.isArray(urls) && urls.length > 0) {
+            const ta = document.getElementById("urls-input");
+            if (ta) {
+              ta.value = urls.join("\n");
+              ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              ta.classList.add("highlight-pulse");
+              setTimeout(() => ta.classList.remove("highlight-pulse"), 3000);
+              addLog(`✨ Successfully imported <strong>${urls.length}</strong> verified faculty directory URLs from Directory Finder.`);
+              showToast(`Imported ${urls.length} verified URLs!`);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse transferred directory URLs:", e);
+        }
+        localStorage.removeItem("pending_contact_urls");
+      }
+
       try {
         if (window.lucide && typeof lucide.createIcons === "function") {
           lucide.createIcons();
         }
-      } catch (err) {
-        console.warn("Lucide icons init warning:", err);
-      }
-      const apiInput = document.getElementById("api-url-input");
-      if (apiInput) apiInput.value = API_BASE;
-      renderProviderUI();
-      checkHealth();
-
-      // Check for transferred URLs from Directory Finder
-      const incomingUrls = localStorage.getItem("contactfinder_incoming_urls");
-      if (incomingUrls && incomingUrls.trim()) {
-        const urlsInput = document.getElementById("urls-input");
-        if (urlsInput) {
-          urlsInput.value = incomingUrls.trim();
-          localStorage.removeItem("contactfinder_incoming_urls");
-          const count = incomingUrls.trim().split('\n').filter(Boolean).length;
-          setTimeout(() => {
-            alert(`✓ Successfully imported ${count} verified Faculty Directory URLs from Directory Finder!\n\nClick "Start Extraction" to extract all faculty contacts.`);
-          }, 350);
-        }
-      }
+      } catch (e) {}
     }
 
     if (document.readyState === "loading") {
@@ -354,7 +410,6 @@
       init();
     }
 
-    // Check backend health status and retrieve env true/false flags
     async function checkHealth() {
       const dot = document.getElementById("status-dot");
       const text = document.getElementById("status-text");
@@ -370,179 +425,117 @@
           const data = await res.json();
           dot.className = "w-2 h-2 rounded-full bg-emerald-400";
           text.textContent = "Server Online";
-
-          // Update active / disabled flags directly according to env
-          const prevHunter = envStatus.enable_hunter;
-          const prevRocket = envStatus.enable_rocketreach;
-          envStatus.enable_hunter = Boolean(data.enable_hunter);
-          envStatus.enable_rocketreach = Boolean(data.enable_rocketreach);
-
-          // If current selection is disabled by env, auto-switch to active provider
-          if (!envStatus.enable_hunter && selectedProvider === "hunter" && envStatus.enable_rocketreach) {
-            selectedProvider = "rocketreach";
-          } else if (!envStatus.enable_rocketreach && selectedProvider === "rocketreach" && envStatus.enable_hunter) {
-            selectedProvider = "hunter";
+          
+          if (data.enable_hunter !== undefined) {
+            updateProviderAvailability("hunter", data.hunter_configured && data.enable_hunter);
           }
-
-          if (prevHunter !== envStatus.enable_hunter || prevRocket !== envStatus.enable_rocketreach) {
-            renderProviderUI();
+          if (data.enable_rocketreach !== undefined) {
+            updateProviderAvailability("rocketreach", data.rocketreach_configured && data.enable_rocketreach);
           }
         } else {
-          throw new Error(`HTTP ${res.status}`);
+          throw new Error();
         }
       } catch (e) {
-        dot.className = "w-2 h-2 rounded-full bg-rose-500";
-        text.textContent = "Server Offline (port 8000)";
+        dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        text.textContent = "Server Offline";
       }
     }
 
-    // Select provider when clicked (only allowed if active in env)
-    function selectProvider(provider) {
-      if (provider === "hunter" && !envStatus.enable_hunter) {
-        if (document.getElementById("radio-hunter")) document.getElementById("radio-hunter").checked = false;
-        return;
-      }
-      if (provider === "rocketreach" && !envStatus.enable_rocketreach) {
-        if (document.getElementById("radio-rocketreach")) document.getElementById("radio-rocketreach").checked = false;
-        if (envStatus.enable_hunter) {
-          selectedProvider = "hunter";
-          if (document.getElementById("radio-hunter")) document.getElementById("radio-hunter").checked = true;
-        }
-        renderProviderUI();
-        return;
-      }
-
-      selectedProvider = provider;
-      renderProviderUI();
+    // ==========================================
+    // UI Helpers
+    // ==========================================
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      const msg = document.getElementById("toast-message");
+      if (!toast || !msg) return;
+      msg.textContent = message;
+      toast.classList.remove("translate-y-12", "opacity-0");
+      toast.classList.add("translate-y-0", "opacity-100");
+      setTimeout(() => {
+        toast.classList.remove("translate-y-0", "opacity-100");
+        toast.classList.add("translate-y-12", "opacity-0");
+      }, 3500);
     }
 
-    // Render provider cards with Active / Disabled states according to env true/false
-    function renderProviderUI() {
-      const cardHunter = document.getElementById("card-hunter");
-      const badgeHunter = document.getElementById("badge-hunter");
-      const radioHunter = document.getElementById("radio-hunter");
-
-      const cardRocket = document.getElementById("card-rocketreach");
-      const badgeRocket = document.getElementById("badge-rocketreach");
-      const radioRocket = document.getElementById("radio-rocketreach");
-
-      if (!cardHunter || !cardRocket) return;
-
-      // Hunter badge based on env
-      if (envStatus.enable_hunter) {
-        badgeHunter.textContent = "Active";
-        badgeHunter.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
-        radioHunter.disabled = false;
-        radioHunter.classList.remove("pointer-events-none", "cursor-not-allowed");
-        radioHunter.classList.add("cursor-pointer");
-      } else {
-        badgeHunter.textContent = "Disabled";
-        badgeHunter.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700";
-        radioHunter.disabled = true;
-        radioHunter.checked = false;
-        radioHunter.classList.remove("cursor-pointer");
-        radioHunter.classList.add("pointer-events-none", "cursor-not-allowed");
-      }
-
-      // Rocket badge based on env
-      if (envStatus.enable_rocketreach) {
-        badgeRocket.textContent = "Active";
-        badgeRocket.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
-        radioRocket.disabled = false;
-        radioRocket.classList.remove("pointer-events-none", "cursor-not-allowed");
-        radioRocket.classList.add("cursor-pointer");
-      } else {
-        badgeRocket.textContent = "Disabled";
-        badgeRocket.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700";
-        radioRocket.disabled = true;
-        radioRocket.checked = false;
-        radioRocket.classList.remove("cursor-pointer");
-        radioRocket.classList.add("pointer-events-none", "cursor-not-allowed");
-      }
-
-      // Card selection styling
-      if (!envStatus.enable_hunter && !envStatus.enable_rocketreach) {
-        // Both disabled in env
-        radioHunter.checked = false;
-        radioRocket.checked = false;
-        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
-        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
-      } else if (selectedProvider === "hunter" && envStatus.enable_hunter) {
-        // Hunter chosen
-        radioHunter.checked = true;
-        radioRocket.checked = false;
-        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
-        cardRocket.className = envStatus.enable_rocketreach
-          ? "flex items-center justify-between p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition select-none"
-          : "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
-      } else if (selectedProvider === "rocketreach" && envStatus.enable_rocketreach) {
-        // Rocket chosen
-        radioHunter.checked = false;
-        radioRocket.checked = true;
-        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
-        cardHunter.className = envStatus.enable_hunter
-          ? "flex items-center justify-between p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition select-none"
-          : "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
-      } else if (envStatus.enable_hunter) {
-        // Default fallback to Hunter if RocketReach disabled
-        selectedProvider = "hunter";
-        radioHunter.checked = true;
-        radioRocket.checked = false;
-        cardHunter.className = "flex items-center justify-between p-3.5 rounded-xl border border-indigo-500/70 bg-indigo-950/30 cursor-pointer hover:border-indigo-400 transition select-none ring-1 ring-indigo-500/30";
-        cardRocket.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed pointer-events-none select-none";
-      }
-    }
-
-    // Toggle settings modal
     function toggleSettingsModal() {
       const modal = document.getElementById("settings-modal");
       modal.classList.toggle("hidden");
     }
 
-    // Save custom settings
     function saveSettings() {
-      API_BASE = document.getElementById("api-url-input").value.trim().replace(/\/$/, "");
+      const raw = document.getElementById("api-url-input").value.trim().replace(/\/$/, "");
+      API_BASE = raw || window.location.origin;
       localStorage.setItem("faculty_scraper_api", API_BASE);
       toggleSettingsModal();
       checkHealth();
+      showToast("API Connection settings saved.");
     }
 
-    // Toast notification helper
-    function showToast(message) {
-      let toast = document.getElementById("app-toast");
-      if (!toast) {
-        toast = document.createElement("div");
-        toast.id = "app-toast";
-        toast.className = "fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 text-xs font-medium shadow-2xl transition-all duration-300 transform translate-y-8 opacity-0 pointer-events-none";
-        document.body.appendChild(toast);
+    function updateProviderAvailability(provider, isAvailable) {
+      providerState[provider].enabled = isAvailable;
+      const card = document.getElementById(`card-${provider}`);
+      const badge = document.getElementById(`badge-${provider}`);
+      const radio = document.getElementById(`radio-${provider}`);
+      if (!card || !badge || !radio) return;
+
+      if (!isAvailable) {
+        card.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-40 cursor-not-allowed select-none pointer-events-none transition";
+        badge.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-800 text-slate-400 border border-slate-700";
+        badge.textContent = "Disabled";
+        radio.disabled = true;
+
+        if (selectedProvider === provider) {
+          const fallback = provider === "hunter" ? "rocketreach" : "hunter";
+          if (providerState[fallback].enabled) {
+            selectProvider(fallback);
+          } else {
+            selectProvider("none");
+          }
+        }
+      } else {
+        card.className = "flex items-center justify-between p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 cursor-pointer hover:border-slate-700 transition select-none";
+        badge.className = "text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        badge.textContent = "Active";
+        radio.disabled = false;
+        
+        if (selectedProvider === provider) {
+          card.classList.add("border-indigo-500/60", "bg-indigo-950/20");
+        }
       }
-      toast.textContent = message;
-      toast.classList.remove("translate-y-8", "opacity-0");
-      setTimeout(() => {
-        toast.classList.add("translate-y-8", "opacity-0");
-      }, 3000);
     }
 
-    // Clear all inputs, previous extraction results, metrics, and logs for a fresh request
+    function selectProvider(provider) {
+      if (provider !== "none" && !providerState[provider]?.enabled) return;
+      selectedProvider = provider;
+      ["hunter", "rocketreach"].forEach(p => {
+        const card = document.getElementById(`card-${p}`);
+        const radio = document.getElementById(`radio-${p}`);
+        if (!card || !radio) return;
+        if (p === provider) {
+          radio.checked = true;
+          card.classList.add("border-indigo-500/60", "bg-indigo-950/20");
+        } else if (providerState[p]?.enabled) {
+          radio.checked = false;
+          card.classList.remove("border-indigo-500/60", "bg-indigo-950/20");
+        }
+      });
+    }
+
     function clearAll() {
-      // 1. Clear textareas and inputs
-      const urlsInput = document.getElementById("urls-input");
-      if (urlsInput) urlsInput.value = "";
-      const filenameInput = document.getElementById("filename-input");
-      if (filenameInput) filenameInput.value = "";
-      const tableSearch = document.getElementById("table-search");
-      if (tableSearch) tableSearch.value = "";
-
-      // 2. Clear state variables
+      document.getElementById("urls-input").value = "";
+      const fnInput = document.getElementById("filename-input");
+      if (fnInput) fnInput.value = "";
       extractedData = [];
-      currentExportFilename = "contacts_export.xlsx";
-      currentServerDownloadUrl = "";
-      if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
+      const searchBox = document.getElementById("search-input");
+      if (searchBox) searchBox.value = "";
+
+      if (timerInterval) clearInterval(timerInterval);
+      const timerBadge = document.getElementById("timer-badge");
+      if (timerBadge) {
+        timerBadge.textContent = "Idle";
+        timerBadge.className = "badge bg-slate-800 text-slate-400 border border-slate-700";
       }
 
-      // 3. Reset Stepper & Timer Badge
       for (let i = 1; i <= 4; i++) {
         const el = document.getElementById(`step-${i}`);
         if (el) {
@@ -555,82 +548,46 @@
         }
       }
 
-      const timerBadge = document.getElementById("timer-badge");
-      if (timerBadge) {
-        timerBadge.textContent = "Idle";
-        timerBadge.className = "badge bg-slate-800 text-slate-400 border border-slate-700";
-      }
+      document.getElementById("console-output").innerHTML = `<p class="text-slate-600">// Ready. Enter contact URLs and click Find Contacts.</p>`;
+      document.getElementById("metric-total").textContent = "0";
+      document.getElementById("metric-unique").textContent = "0";
+      document.getElementById("metric-success").textContent = "0";
+      document.getElementById("metric-failed").textContent = "0";
+      document.getElementById("metric-emails").textContent = "0";
+      document.getElementById("metric-phones").textContent = "0";
+      document.getElementById("results-count").textContent = "0 records";
+      document.getElementById("count-all").textContent = "0";
+      document.getElementById("count-email").textContent = "0";
+      document.getElementById("count-phone").textContent = "0";
 
-      // 4. Reset Action Button
-      const btn = document.getElementById("scrape-btn");
-      const btnText = document.getElementById("btn-text");
-      if (btn) {
-        btn.disabled = false;
-        btn.classList.remove("opacity-50", "cursor-not-allowed");
-      }
-      if (btnText) btnText.textContent = "Find Contacts & Export Excel";
-
-      // 5. Reset Activity Log Box
-      const logBox = document.getElementById("log-box");
-      if (logBox) {
-        logBox.innerHTML = '<p class="text-slate-600">// Ready. Enter contact URLs and click Find Contacts.</p>';
-      }
-
-      // 6. Hide and Reset Results Section
-      const resultsSection = document.getElementById("results-section");
-      if (resultsSection) resultsSection.classList.add("hidden");
-
-      const tableBody = document.getElementById("table-body");
-      if (tableBody) tableBody.innerHTML = "";
-
-      const filteredCount = document.getElementById("filtered-count");
-      if (filteredCount) filteredCount.textContent = "Showing 0 contacts";
-
-      // Reset metrics
-      ["metric-total", "metric-unique", "metric-success-links", "metric-failed-links", "metric-emails", "metric-phones"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = "0";
-      });
-
-      // Hide failed URLs summary card and drawer
-      const summaryCard = document.getElementById("failed-urls-summary-card");
-      if (summaryCard) summaryCard.classList.add("hidden");
-      const drawer = document.getElementById("failed-urls-drawer");
-      if (drawer) {
-        drawer.innerHTML = "";
-        drawer.classList.add("hidden");
-      }
-
-      // Refresh Lucide icons if available
-      if (window.lucide && typeof lucide.createIcons === "function") {
-        lucide.createIcons();
-      }
-
-      showToast("✓ Everything cleared. Ready for a new request.");
+      const tbody = document.getElementById("results-table-body");
+      tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-500 font-sans text-xs">No contacts found yet. Enter URLs above and click "Find Contacts & Export Excel".</td></tr>`;
+      showToast("Contact Finder reset.");
     }
 
-    // Logging helper
     function addLog(msg) {
-      const box = document.getElementById("log-box");
-      const p = document.createElement("p");
+      const consoleBox = document.getElementById("console-output");
+      if (!consoleBox) return;
       const time = new Date().toLocaleTimeString();
-      p.textContent = `[${time}] ${msg}`;
-      box.appendChild(p);
-      box.scrollTop = box.scrollHeight;
+      const p = document.createElement("p");
+      p.className = "text-slate-300";
+      p.innerHTML = `<span class="text-slate-600">[${time}]</span> ${msg}`;
+      consoleBox.appendChild(p);
+      consoleBox.scrollTop = consoleBox.scrollHeight;
     }
 
-    // Set active stepper state
     function setStep(stepNum) {
       for (let i = 1; i <= 4; i++) {
         const el = document.getElementById(`step-${i}`);
+        if (!el) continue;
         const icon = el.querySelector(".step-icon");
         if (i < stepNum) {
           el.className = "flex items-start space-x-3 p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 transition";
-          icon.className = "step-icon w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold";
-          icon.innerHTML = "✓";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold";
+          icon.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i>`;
         } else if (i === stepNum) {
-          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/50 shadow-md shadow-indigo-500/10 transition";
-          icon.className = "step-icon w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold animate-pulse";
+          el.className = "flex items-start space-x-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/40 shadow-sm transition";
+          icon.className = "step-icon w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-bold animate-pulse";
           icon.innerHTML = i;
         } else {
           el.className = "flex items-start space-x-3 p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 transition";
@@ -638,93 +595,50 @@
           icon.innerHTML = i;
         }
       }
+      try { lucide.createIcons(); } catch(e){}
     }
 
-    // Helper to resolve clean college / university name for non-technical users
-    function getCollegeName(url, school) {
-      if (school && typeof school === 'string' && school.trim() && !['university', 'college', 'unknown', 'none'].includes(school.trim().toLowerCase())) {
-        return school.trim();
-      }
-      try {
-        const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
-        const known = {
-          'asurams.edu': 'Albany State University',
-          'georgiasouthern.edu': 'Georgia Southern University',
-          'lagrange.edu': 'LaGrange College',
-          'gntc.edu': 'Georgia Northwestern Technical College',
-          'augusta.edu': 'Augusta University',
-          'uga.edu': 'University of Georgia',
-          'gsu.edu': 'Georgia State University',
-          'kennesaw.edu': 'Kennesaw State University',
-          'gatech.edu': 'Georgia Institute of Technology',
-          'columbusstate.edu': 'Columbus State University',
-          'ung.edu': 'University of North Georgia',
-          'valdosta.edu': 'Valdosta State University',
-          'westga.edu': 'University of West Georgia',
-          'gcsu.edu': 'Georgia College & State University',
-          'emory.edu': 'Emory University',
-          'mercer.edu': 'Mercer University'
-        };
-        for (const [dom, name] of Object.entries(known)) {
-          if (host.includes(dom)) return name;
-        }
-        const core = host.split('.')[0] || 'Institution';
-        return core.charAt(0).toUpperCase() + core.slice(1) + ' University';
-      } catch (e) {
-        return 'Directory Link';
-      }
-    }
-
-    // Main scrape trigger
+    // ==========================================
+    // Scraper Action
+    // ==========================================
     async function startScrape() {
       const rawUrls = document.getElementById("urls-input").value.trim();
       if (!rawUrls) {
-        alert("Please enter at least one contact URL.");
+        alert("Please enter at least one URL or copy URLs from Directory Finder.");
         return;
       }
 
-      const urls = rawUrls.split(/[\n,]/).map(u => u.trim()).filter(u => u.startsWith("http"));
-      if (urls.length === 0) {
-        alert("Please enter valid HTTP/HTTPS URLs.");
-        return;
-      }
-
-      const customFilename = document.getElementById("filename-input").value.trim();
-      
-      // Effective provider based on selection and env state
-      let effectiveProvider = "none";
-      if (selectedProvider === "hunter" && envStatus.enable_hunter) {
-        effectiveProvider = "hunter";
-      } else if (selectedProvider === "rocketreach" && envStatus.enable_rocketreach) {
-        effectiveProvider = "rocketreach";
-      }
-
+      const filename = document.getElementById("filename-input").value.trim();
       const btn = document.getElementById("scrape-btn");
       const btnText = document.getElementById("btn-text");
       const timerBadge = document.getElementById("timer-badge");
 
       btn.disabled = true;
-      btnText.textContent = "Finding Contacts...";
+      btn.classList.add("opacity-60", "cursor-not-allowed");
+      btnText.textContent = "Processing Contacts...";
+      timerBadge.textContent = "Running 0s";
+      timerBadge.className = "badge bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse";
+
       let seconds = 0;
-      timerBadge.textContent = "0s";
-      timerBadge.className = "badge bg-indigo-950 text-indigo-400 border border-indigo-800 animate-pulse";
+      if (timerInterval) clearInterval(timerInterval);
       timerInterval = setInterval(() => {
         seconds++;
-        timerBadge.textContent = `${seconds}s`;
+        timerBadge.textContent = `Running ${seconds}s`;
       }, 1000);
 
-      const enrichLabel = effectiveProvider === "hunter" ? "Hunter" : (effectiveProvider === "rocketreach" ? "RocketReach" : "Direct Website Only (Disabled)");
-      addLog(`Initiating contact discovery across ${urls.length} URL(s) [Email Finder: ${enrichLabel}]...`);
       setStep(1);
+      const urlList = rawUrls.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
+      addLog(`Initiating contact discovery across ${urlList.length} URL(s)...`);
 
       try {
-        setStep(2);
         const payload = {
-          urls: urls,
-          enrich_provider: effectiveProvider,
-          output_filename: customFilename || null
+          urls: urlList,
+          enrich_provider: selectedProvider,
+          enrich_limit: 0,
+          output_filename: filename || null
         };
 
+        setStep(2);
         const res = await fetch(`${API_BASE}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -732,271 +646,168 @@
         });
 
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({ detail: res.statusText }));
-          throw new Error(errData.detail || "Server returned error");
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server returned HTTP ${res.status}`);
         }
 
+        const data = await res.json();
         setStep(3);
-        const result = await res.json();
-        setStep(4);
 
-        // Process individual URL logs into activity box
-        if (result.url_logs && result.url_logs.length > 0) {
-          result.url_logs.forEach(l => {
-            const college = getCollegeName(l.url, l.school || l.university);
-            if (l.status === 'blocked' || l.status === 'no_contacts' || l.status === 'error' || l.status === 'exception') {
-              addLog(`❌ [COULD NOT EXTRACT] ${college} (${l.url})`);
+        if (data.results) {
+          data.results.forEach(r => {
+            if (r.status === "success") {
+              addLog(`✓ [EXTRACTED] ${r.school || r.url} – Found ${r.count} contact(s).`);
             } else {
-              addLog(`✓ [EXTRACTED] ${college} — Found ${l.count} contact(s).`);
+              addLog(`❌ [FAILED] ${r.school || r.url} – Reason: ${r.reason || r.error}`);
             }
           });
         }
 
-        if (result.failed_urls && result.failed_urls.length > 0) {
-          addLog(`⚠️ [NOTICE] Could not extract contacts from ${result.failed_urls.length} of ${urls.length} college(s).`);
-        }
+        setStep(4);
+        extractedData = data.contacts || [];
 
-        renderResults(result);
+        // Update stats
+        document.getElementById("metric-total").textContent = data.total_extracted || extractedData.length;
+        document.getElementById("metric-unique").textContent = data.unique_extracted || extractedData.length;
+        document.getElementById("metric-success").textContent = data.successful_urls || 0;
+        document.getElementById("metric-failed").textContent = data.failed_urls || 0;
 
-      } catch (err) {
-        addLog(`ERROR: ${err.message}`);
-        alert(`Discovery failed: ${err.message}`);
-      } finally {
+        const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
+        const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
+        document.getElementById("metric-emails").textContent = emailCount;
+        document.getElementById("metric-phones").textContent = phoneCount;
+
+        currentExportFilename = data.filename || "contacts_export.xlsx";
+        currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
+
+        populateTable(extractedData);
+
         clearInterval(timerInterval);
+        timerBadge.textContent = `Completed (${seconds}s)`;
+        timerBadge.className = "badge bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
         btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-not-allowed");
+        btnText.textContent = "Find Contacts & Export Excel";
+
+        addLog(`✨ Extraction complete! ${extractedData.length} unique contacts ready.`);
+        showToast(`Extracted ${extractedData.length} faculty contacts!`);
+      } catch (err) {
+        clearInterval(timerInterval);
+        timerBadge.textContent = "Error";
+        timerBadge.className = "badge bg-rose-500/20 text-rose-400 border border-rose-500/30";
+        addLog(`❌ Error: ${err.message}`);
+        alert(`Failed: ${err.message}`);
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-not-allowed");
         btnText.textContent = "Find Contacts & Export Excel";
       }
     }
 
-    // Toggle failed links accordion drawer
-    function toggleFailedDrawer() {
-      const drawer = document.getElementById("failed-urls-drawer");
-      const label = document.getElementById("failed-toggle-label");
-      const chevron = document.getElementById("failed-toggle-chevron");
-      if (!drawer) return;
-      const isHidden = drawer.classList.contains("hidden");
-      if (isHidden) {
-        drawer.classList.remove("hidden");
-        if (label) label.textContent = "Hide Failed Links";
-        if (chevron) chevron.setAttribute("data-lucide", "chevron-up");
-      } else {
-        drawer.classList.add("hidden");
-        if (label) label.textContent = "View Failed Links";
-        if (chevron) chevron.setAttribute("data-lucide", "chevron-down");
-      }
-      if (window.lucide && typeof lucide.createIcons === "function") {
-        lucide.createIcons();
-      }
-    }
+    // ==========================================
+    // Table Rendering, Filtering & Excel Export
+    // ==========================================
+    function populateTable(contacts) {
+      const tbody = document.getElementById("results-table-body");
+      const countLabel = document.getElementById("results-count");
+      countLabel.textContent = `${contacts.length} records`;
 
-    // Render returned results in dashboard
-    function renderResults(data) {
-      extractedData = data.contacts || [];
-      const timerBadge = document.getElementById("timer-badge");
-      const failedUrls = data.failed_urls || [];
-      const successfulUrls = data.successful_urls || [];
+      document.getElementById("count-all").textContent = extractedData.length;
+      document.getElementById("count-email").textContent = extractedData.filter(c => c.email).length;
+      document.getElementById("count-phone").textContent = extractedData.filter(c => c.phone).length;
 
-      // Update metric cards with clear counts
-      const totalExtractedEl = document.getElementById("metric-total");
-      const uniqueEl = document.getElementById("metric-unique");
-      const successLinksEl = document.getElementById("metric-success-links");
-      const failedLinksEl = document.getElementById("metric-failed-links");
-      const emailsEl = document.getElementById("metric-emails");
-
-      if (totalExtractedEl) totalExtractedEl.textContent = data.total_extracted || 0;
-      if (uniqueEl) uniqueEl.textContent = data.unique_contacts || 0;
-      if (successLinksEl) successLinksEl.textContent = successfulUrls.length;
-      if (failedLinksEl) failedLinksEl.textContent = failedUrls.length;
-
-      const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
-      if (emailsEl) emailsEl.textContent = emailCount;
-
-      const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
-      const phonesEl = document.getElementById("metric-phones");
-      if (phonesEl) phonesEl.textContent = phoneCount;
-
-      // Update timer badge
-      if (timerBadge) {
-        if (extractedData.length > 0) {
-          timerBadge.textContent = "Complete";
-          timerBadge.className = "badge bg-emerald-950 text-emerald-400 border border-emerald-800";
-        } else {
-          timerBadge.textContent = "0 Contacts";
-          timerBadge.className = "badge bg-rose-950 text-rose-400 border border-rose-800";
-        }
+      if (!contacts || contacts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-500 font-sans text-xs">No contacts match the current criteria.</td></tr>`;
+        return;
       }
 
-      // Compact failed URLs summary card & drawer
-      const summaryCard = document.getElementById("failed-urls-summary-card");
-      const countBadge = document.getElementById("failed-count-badge");
-      const drawer = document.getElementById("failed-urls-drawer");
+      tbody.innerHTML = contacts.map((c, i) => {
+        const email = c.email ? `<a href="mailto:${c.email}" class="text-indigo-400 hover:underline">${c.email}</a>` : '<span class="text-slate-600">None</span>';
+        const phone = c.phone ? `<span class="text-slate-300">${c.phone}</span>` : '<span class="text-slate-600">None</span>';
+        const creds = c.credentials || c.credential ? `<span class="text-emerald-400 text-[11px] font-semibold">${c.credentials || c.credential}</span>` : '<span class="text-slate-600">—</span>';
+        const campus = c.campus ? `<span class="badge bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">${c.campus}</span>` : '<span class="text-slate-600">—</span>';
 
-      if (summaryCard && countBadge && drawer) {
-        if (failedUrls.length > 0) {
-          summaryCard.classList.remove("hidden");
-          countBadge.textContent = failedUrls.length;
-
-          drawer.innerHTML = failedUrls.map(f => {
-            const collegeName = getCollegeName(f.url, f.school);
-            const reason = f.reason || (f.status === "blocked" ? "Cloudflare Protected" : "No Contacts Found");
-
-            let badgeStyle = "bg-slate-800 text-slate-300 border-slate-700";
-            if (reason.toLowerCase().includes("cloudflare") || reason.toLowerCase().includes("403")) {
-              badgeStyle = "bg-amber-950/70 text-amber-300 border-amber-800";
-            } else if (reason.toLowerCase().includes("timeout")) {
-              badgeStyle = "bg-rose-950/70 text-rose-300 border-rose-800";
-            } else if (reason.toLowerCase().includes("homepage")) {
-              badgeStyle = "bg-purple-950/70 text-purple-300 border-purple-800";
-            } else if (reason.toLowerCase().includes("pdf")) {
-              badgeStyle = "bg-sky-950/70 text-sky-300 border-sky-800";
-            }
-
-            return `
-              <div class="px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div class="flex items-center space-x-2 min-w-0">
-                  <span class="font-medium text-slate-200 truncate">${collegeName}</span>
-                  <span class="text-[10px] px-2 py-0.5 rounded border ${badgeStyle} whitespace-nowrap flex-shrink-0 font-medium">${reason}</span>
-                </div>
-                <a href="${f.url}" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:underline flex items-center gap-1 font-mono text-[11px] truncate max-w-xs sm:max-w-sm flex-shrink-0">
-                  <span class="truncate">${f.url}</span>
-                  <i data-lucide="external-link" class="w-3 h-3 flex-shrink-0 inline"></i>
-                </a>
-              </div>
-            `;
-          }).join("");
-        } else {
-          summaryCard.classList.add("hidden");
-          drawer.classList.add("hidden");
-        }
-      }
-
-      // Update download file state
-      currentExportFilename = data.filename || "contacts_export.xlsx";
-      currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
-
-      // Populate table
-      populateTable(extractedData);
-
-      // Reveal results section
-      const resultsSection = document.getElementById("results-section");
-      if (resultsSection) {
-        resultsSection.classList.remove("hidden");
-        resultsSection.scrollIntoView({ behavior: "smooth" });
-      }
-
-      if (window.lucide && typeof lucide.createIcons === "function") {
-        lucide.createIcons();
-      }
-    }
-
-    // Populate data table rows
-    function populateTable(rows) {
-      const tbody = document.getElementById("table-body");
-      tbody.innerHTML = "";
-
-      document.getElementById("filtered-count").textContent = `Showing ${rows.length} contacts`;
-
-      rows.forEach((c, idx) => {
-        const tr = document.createElement("tr");
-        tr.className = "hover:bg-slate-800/40 transition";
-
-        // Format credentials as badges
-        const credsRaw = c.credentials || c.credential || "";
-        let credsHtml = "-";
-        if (credsRaw) {
-          const tokens = credsRaw.split(/[,/]/).map(t => t.trim()).filter(Boolean);
-          credsHtml = tokens.map(t => `<span class="badge bg-indigo-950 text-indigo-300 border border-indigo-800 mr-1 mb-1">${t}</span>`).join("");
-        }
-
-        let sourceBadge = "";
-        if (c.email_source) {
-          const isHunter = c.email_source.toLowerCase().includes("hunter");
-          const isRR = c.email_source.toLowerCase().includes("rocket");
-          const badgeClass = isHunter ? "text-amber-300 bg-amber-950/70 border-amber-800" : (isRR ? "text-purple-300 bg-purple-950/70 border-purple-800" : "text-sky-300 bg-sky-950/70 border-sky-800");
-          sourceBadge = `<span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeClass} ml-1 font-mono">${c.email_source}</span>`;
-        }
-
-        const emailHtml = c.email ? `<div class="flex items-center gap-1"><a href="mailto:${c.email}" class="text-sky-400 hover:underline flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 inline"></i>${c.email}</a>${sourceBadge}</div>` : '<span class="text-slate-600">-</span>';
-        const phoneHtml = c.phone ? `<a href="tel:${c.phone}" class="text-slate-300 hover:text-white flex items-center gap-1"><i data-lucide="phone" class="w-3.5 h-3.5 inline text-slate-500"></i>${c.phone}</a>` : '<span class="text-slate-600">-</span>';
-        const campusHtml = c.campus ? c.campus : '<span class="text-slate-600">-</span>';
-
-        tr.innerHTML = `
-          <td class="py-3 px-4 text-center text-xs text-slate-500 font-mono">${idx + 1}</td>
-          <td class="py-3 px-4 font-semibold text-indigo-300 whitespace-nowrap">${c.school || "-"}</td>
-          <td class="py-3 px-4 font-medium text-slate-100">${c.first_name || ""}</td>
-          <td class="py-3 px-4 font-medium text-slate-100">${c.last_name || ""}</td>
-          <td class="py-3 px-4 text-slate-300">${c.title || ""}</td>
-          <td class="py-3 px-4">${credsHtml}</td>
-          <td class="py-3 px-4">${emailHtml}</td>
-          <td class="py-3 px-4">${phoneHtml}</td>
-          <td class="py-3 px-4 text-slate-300">${campusHtml}</td>
+        return `
+          <tr class="hover:bg-slate-900/50 transition">
+            <td class="p-3 text-slate-500 text-[11px]">${i + 1}</td>
+            <td class="p-3 font-sans font-medium text-slate-100">${c.first_name || ''} ${c.last_name || ''}</td>
+            <td class="p-3">${creds}</td>
+            <td class="p-3 font-sans text-slate-300 max-w-xs truncate" title="${c.title || ''}">${c.title || '—'}</td>
+            <td class="p-3 font-sans text-slate-400 max-w-xs truncate" title="${c.school || ''}">${c.school || '—'}</td>
+            <td class="p-3">${campus}</td>
+            <td class="p-3">${email}</td>
+            <td class="p-3">${phone}</td>
+          </tr>
         `;
-        tbody.appendChild(tr);
-      });
-
-      lucide.createIcons();
+      }).join('');
     }
 
-    // Filter table by search query
-    function filterTable() {
-      const q = document.getElementById("table-search").value.toLowerCase().trim();
+    function filterTable(type) {
+      document.getElementById("filter-all").className = type === 'all' 
+        ? "px-3 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold cursor-pointer"
+        : "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer";
+      document.getElementById("filter-email").className = type === 'email'
+        ? "px-3 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold cursor-pointer"
+        : "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer";
+      document.getElementById("filter-phone").className = type === 'phone'
+        ? "px-3 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold cursor-pointer"
+        : "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer";
+
+      let filtered = extractedData;
+      if (type === 'email') filtered = extractedData.filter(c => c.email);
+      if (type === 'phone') filtered = extractedData.filter(c => c.phone);
+      populateTable(filtered);
+    }
+
+    function handleSearch(event) {
+      const q = event.target.value.toLowerCase().trim();
       if (!q) {
         populateTable(extractedData);
         return;
       }
-
-      const filtered = extractedData.filter(c => {
-        return (
-          (c.school && c.school.toLowerCase().includes(q)) ||
-          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
-          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
-          (c.title && c.title.toLowerCase().includes(q)) ||
-          ((c.credentials || c.credential || "").toLowerCase().includes(q)) ||
-          (c.campus && c.campus.toLowerCase().includes(q)) ||
-          (c.email && c.email.toLowerCase().includes(q)) ||
-          (c.phone && c.phone.toLowerCase().includes(q))
-        );
-      });
-
+      const filtered = extractedData.filter(c => 
+        (c.first_name && c.first_name.toLowerCase().includes(q)) ||
+        (c.last_name && c.last_name.toLowerCase().includes(q)) ||
+        (c.title && c.title.toLowerCase().includes(q)) ||
+        (c.school && c.school.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        (c.credentials && c.credentials.toLowerCase().includes(q)) ||
+        (c.campus && c.campus.toLowerCase().includes(q))
+      );
       populateTable(filtered);
     }
 
-    // Download contacts as formatted Excel workbook (.xlsx)
     function downloadExcelSpreadsheet() {
       if (!extractedData || extractedData.length === 0) {
         alert("No contact records available to download.");
         return;
       }
 
-      // Format clean rows matching the 8 standard columns
       const formattedRows = extractedData.map(c => ({
-        "School": (c.school || "").trim(),
         "First Name": (c.first_name || "").trim(),
         "Last Name": (c.last_name || "").trim(),
-        "Title": (c.title || "").trim(),
         "Credentials": (c.credentials || c.credential || "").trim(),
+        "Title": (c.title || "").trim(),
+        "School / Institution": (c.school || "").trim(),
+        "Campus": (c.campus || "").trim(),
         "Email": (c.email || "").trim(),
-        "Phone": (c.phone || "").trim(),
-        "Campus": (c.campus || "").trim()
+        "Phone": (c.phone || "").trim()
       }));
 
-      // Instant client-side Excel generation via SheetJS (bulletproof on serverless Vercel)
       if (typeof XLSX !== "undefined") {
         try {
           const ws = XLSX.utils.json_to_sheet(formattedRows, {
-            header: ["School", "First Name", "Last Name", "Title", "Credentials", "Email", "Phone", "Campus"]
+            header: ["First Name", "Last Name", "Credentials", "Title", "School / Institution", "Campus", "Email", "Phone"]
           });
 
-          // Set clean column widths
           ws['!cols'] = [
-            { wch: 28 }, // School
-            { wch: 15 }, // First Name
-            { wch: 15 }, // Last Name
-            { wch: 32 }, // Title
-            { wch: 18 }, // Credentials
-            { wch: 30 }, // Email
-            { wch: 18 }, // Phone
-            { wch: 20 }  // Campus
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 18 },
+            { wch: 32 },
+            { wch: 30 },
+            { wch: 20 },
+            { wch: 30 },
+            { wch: 18 }
           ];
 
           const wb = XLSX.utils.book_new();
@@ -1005,13 +816,13 @@
           let outName = currentExportFilename || "contacts_export.xlsx";
           if (!outName.endsWith(".xlsx")) outName += ".xlsx";
           XLSX.writeFile(wb, outName);
+          showToast(`Downloaded ${outName}`);
           return;
         } catch (err) {
           console.warn("Client-side Excel export fallback triggered:", err);
         }
       }
 
-      // Fallback: Use backend download URL if SheetJS CDN is unreachable
       if (currentServerDownloadUrl) {
         window.location.href = currentServerDownloadUrl;
       }
