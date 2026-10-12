@@ -237,8 +237,11 @@
         <div class="text-3xl font-extrabold text-emerald-400" id="metric-success">0</div>
       </div>
 
-      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
-        <div class="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-1">Failed Links</div>
+      <div onclick="toggleFailedDrawer()" class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg cursor-pointer hover:border-rose-800/80 transition" title="Click to view details of failed links">
+        <div class="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-1 flex items-center justify-between">
+          <span>Failed Links</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-rose-400"></i>
+        </div>
         <div class="text-3xl font-extrabold text-rose-400" id="metric-failed">0</div>
       </div>
 
@@ -250,6 +253,34 @@
       <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
         <div class="text-xs font-semibold uppercase tracking-wider text-cyan-400 mb-1">Phones Found</div>
         <div class="text-3xl font-extrabold text-cyan-400" id="metric-phones">0</div>
+      </div>
+    </div>
+
+    <!-- Failed Links Section (Shown when failed_count > 0) -->
+    <div id="failed-urls-container" class="hidden space-y-3">
+      <div class="p-4 rounded-2xl bg-rose-950/20 border border-rose-800/50 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-sm text-slate-100"><span id="failed-count-badge" class="text-rose-400 font-extrabold">0</span> Link(s) Failed to Extract Contacts</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 font-semibold">Review Below</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">These directories were protected by Cloudflare bot security, returned 0 contacts, or encountered network errors.</p>
+          </div>
+        </div>
+
+        <button type="button" id="toggle-failed-btn" onclick="toggleFailedDrawer()" class="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-800/60 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer self-start sm:self-auto">
+          <span id="failed-toggle-label">Hide Failed Links</span>
+          <i data-lucide="chevron-up" id="failed-toggle-chevron" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Drawer for Failed Links -->
+      <div id="failed-urls-drawer" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2 max-h-80 overflow-y-auto">
+        <!-- Populated dynamically -->
       </div>
     </div>
 
@@ -278,6 +309,7 @@
           <button id="filter-all" onclick="filterTable('all')" class="px-3 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold cursor-pointer">All (<span id="count-all">0</span>)</button>
           <button id="filter-email" onclick="filterTable('email')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer">With Email (<span id="count-email">0</span>)</button>
           <button id="filter-phone" onclick="filterTable('phone')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 font-medium cursor-pointer">With Phone (<span id="count-phone">0</span>)</button>
+          <button id="filter-failed-tab" onclick="toggleFailedDrawer()" class="hidden px-3 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 border border-rose-900/60 bg-rose-950/20 hover:bg-rose-950/40 font-medium cursor-pointer">Failed Links (<span id="count-failed-tab">0</span>)</button>
         </div>
 
         <div class="w-full sm:w-72">
@@ -570,6 +602,17 @@
 
       const tbody = document.getElementById("results-table-body");
       tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-500 font-sans text-xs">No contacts found yet. Enter URLs above and click "Find Contacts & Export Excel".</td></tr>`;
+
+      const failedContainer = document.getElementById("failed-urls-container");
+      if (failedContainer) failedContainer.classList.add("hidden");
+      const failedDrawer = document.getElementById("failed-urls-drawer");
+      if (failedDrawer) {
+        failedDrawer.classList.add("hidden");
+        failedDrawer.innerHTML = "";
+      }
+      const failedTab = document.getElementById("filter-failed-tab");
+      if (failedTab) failedTab.classList.add("hidden");
+
       showToast("Contact Finder reset.");
     }
 
@@ -729,6 +772,8 @@
         currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
 
         populateTable(extractedData);
+        const failedList = data.failed_urls || [];
+        renderFailedUrls(failedList);
         setStep(5); // Mark step 4 as completed (green checkmark)
 
         clearInterval(timerInterval);
@@ -750,6 +795,97 @@
         btn.classList.remove("opacity-60", "cursor-not-allowed");
         btnText.textContent = "Find Contacts & Export Excel";
       }
+    }
+
+    // ==========================================
+    // Failed Links Rendering & Drawer Toggle
+    // ==========================================
+    function toggleFailedDrawer() {
+      const drawer = document.getElementById("failed-urls-drawer");
+      const label = document.getElementById("failed-toggle-label");
+      const chevron = document.getElementById("failed-toggle-chevron");
+      if (!drawer) return;
+      const isHidden = drawer.classList.contains("hidden");
+      if (isHidden) {
+        drawer.classList.remove("hidden");
+        if (label) label.textContent = "Hide Failed Links";
+        if (chevron) chevron.setAttribute("data-lucide", "chevron-up");
+        drawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } else {
+        drawer.classList.add("hidden");
+        if (label) label.textContent = "View Failed Links";
+        if (chevron) chevron.setAttribute("data-lucide", "chevron-down");
+      }
+      try { lucide.createIcons(); } catch(e){}
+    }
+
+    function renderFailedUrls(failedList) {
+      const container = document.getElementById("failed-urls-container");
+      const countBadge = document.getElementById("failed-count-badge");
+      const drawer = document.getElementById("failed-urls-drawer");
+      const failedTab = document.getElementById("filter-failed-tab");
+      const failedTabCount = document.getElementById("count-failed-tab");
+
+      if (!container || !drawer) return;
+
+      if (!failedList || failedList.length === 0) {
+        container.classList.add("hidden");
+        drawer.classList.add("hidden");
+        drawer.innerHTML = "";
+        if (failedTab) failedTab.classList.add("hidden");
+        return;
+      }
+
+      container.classList.remove("hidden");
+      if (countBadge) countBadge.textContent = failedList.length;
+      if (failedTab && failedTabCount) {
+        failedTab.classList.remove("hidden");
+        failedTabCount.textContent = failedList.length;
+      }
+
+      drawer.innerHTML = failedList.map((f, i) => {
+        const school = f.school || f.university || "Target Directory";
+        const reason = f.reason || (f.status === "blocked" ? "Cloudflare Protected (HTTP 403)" : "No Nursing Faculty Found");
+        const detail = f.message || f.error || "";
+        const url = f.url || "";
+
+        let badgeClass = "bg-rose-950/80 text-rose-300 border-rose-800/80";
+        if (reason.toLowerCase().includes("cloudflare") || reason.toLowerCase().includes("403") || reason.toLowerCase().includes("blocked")) {
+          badgeClass = "bg-amber-950/80 text-amber-300 border-amber-800/80";
+        } else if (reason.toLowerCase().includes("timeout")) {
+          badgeClass = "bg-purple-950/80 text-purple-300 border-purple-800/80";
+        } else if (reason.toLowerCase().includes("pdf")) {
+          badgeClass = "bg-sky-950/80 text-sky-300 border-sky-800/80";
+        }
+
+        return `
+          <div class="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div class="space-y-1 min-w-0">
+              <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                <span class="font-bold text-slate-100">${school}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full border ${badgeClass} font-semibold">${reason}</span>
+              </div>
+              ${detail ? `<p class="text-slate-400 text-[11px] leading-relaxed">${detail}</p>` : ''}
+            </div>
+
+            <div class="flex items-center space-x-2 flex-shrink-0">
+              <a href="${url}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-400 hover:text-indigo-300 border border-slate-800 text-[11px] font-mono flex items-center gap-1.5 transition" title="Open directory in new tab">
+                <span class="truncate max-w-[200px] sm:max-w-[280px]">${url}</span>
+                <i data-lucide="external-link" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              </a>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // Automatically display drawer so user sees which link failed
+      drawer.classList.remove("hidden");
+      const label = document.getElementById("failed-toggle-label");
+      if (label) label.textContent = "Hide Failed Links";
+      const chevron = document.getElementById("failed-toggle-chevron");
+      if (chevron) chevron.setAttribute("data-lucide", "chevron-up");
+
+      try { lucide.createIcons(); } catch(e){}
     }
 
     // ==========================================
