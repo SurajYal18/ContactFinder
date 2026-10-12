@@ -18,3 +18,7 @@ exports/
 
 # Vercel build output
 .vercel/
+
+# Standalone services & scratch
+directory_finder/
+scratch/
