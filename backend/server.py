@@ -445,12 +445,20 @@ def find_directories_endpoint(payload: DirectorySearchRequest):
     results = deduped
     results.sort(key=lambda x: x.get("school", ""))
     verified_count = sum(1 for r in results if r.get("is_ready_for_extractor"))
+    waf_count = sum(1 for r in results if "waf" in str(r.get("status", "")).lower() or "protected" in str(r.get("status", "")).lower() or "cloudflare" in str(r.get("status", "")).lower())
+
+    for r in results:
+        r["url"] = r.get("directory_url", "")
+        r["ready"] = bool(r.get("is_ready_for_extractor", False))
 
     return {
         "success": True,
         "total": len(results),
         "verified_count": verified_count,
-        "results": results
+        "ready_count": verified_count,
+        "waf_count": waf_count,
+        "results": results,
+        "directories": results
     }
 
 @app.post("/api/extract-schools-from-file")

@@ -732,24 +732,46 @@
 
         setStep(3);
         const data = await res.json();
-        const directories = data.directories || [];
+        const rawList = data.results || data.directories || [];
+        const directories = rawList.map(r => {
+          const isVerified = Boolean(
+            (r.ready !== undefined ? r.ready : r.is_ready_for_extractor) &&
+            r.status &&
+            (r.status.includes("200") || r.status.includes("Verified Active")) &&
+            !r.status.toLowerCase().includes("waf") &&
+            !r.status.toLowerCase().includes("timeout") &&
+            !r.status.toLowerCase().includes("error")
+          );
+          return {
+            school: r.school || "",
+            url: r.url || r.directory_url || "",
+            status: r.status || "Unknown",
+            ready: isVerified
+          };
+        });
         
         currentDirectories = directories;
-        selectedUrls = new Set(directories.filter(d => d.ready).map(d => d.url));
+        const verifiedActive = directories.filter(d => d.ready);
+        selectedUrls = new Set(verifiedActive.map(d => d.url));
 
-        addLog(`Discovery & verification complete. Found ${data.ready_count || 0} active faculty directory links.`);
+        const verifiedCount = data.verified_count !== undefined ? data.verified_count : verifiedActive.length;
+        const readyCount = data.ready_count !== undefined ? data.ready_count : verifiedActive.length;
+        const wafCount = data.waf_count !== undefined ? data.waf_count : directories.filter(d => !d.ready && (d.status.toLowerCase().includes("waf") || d.status.toLowerCase().includes("protected") || d.status.toLowerCase().includes("cloudflare"))).length;
+
+        addLog(`Discovery & verification complete. Found ${verifiedCount} active faculty directory links.`);
         setStep(4);
 
         // Update metrics
-        document.getElementById("stat-total-schools").textContent = data.total || schools.length;
-        document.getElementById("stat-verified-directories").textContent = data.verified_count || 0;
-        document.getElementById("stat-waf-directories").textContent = data.waf_count || 0;
-        document.getElementById("stat-ready-count").textContent = data.ready_count || 0;
+        document.getElementById("stat-total-schools").textContent = data.total || directories.length || schools.length;
+        document.getElementById("stat-verified-directories").textContent = verifiedCount;
+        document.getElementById("stat-waf-directories").textContent = wafCount;
+        document.getElementById("stat-ready-count").textContent = readyCount;
 
         document.getElementById("results-section").classList.remove("hidden");
         renderTable();
+        document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
 
-        showToast(`Discovered ${data.ready_count || 0} active faculty directories!`);
+        showToast(`Discovered ${verifiedCount} active faculty directories!`);
       } catch (err) {
         addLog(`Error during directory search: ${err.message}`);
         alert(`Discovery error: ${err.message}`);
@@ -893,14 +915,13 @@
     }
 
     function getVerifiedDirectoriesToExport() {
-      const verified = currentDirectories.filter(d => d.ready);
       if (selectedUrls.size > 0) {
-        const selectedVerified = verified.filter(d => selectedUrls.has(d.url));
-        if (selectedVerified.length > 0) {
-          return selectedVerified;
-        }
+        const selected = currentDirectories.filter(d => selectedUrls.has(d.url));
+        if (selected.length > 0) return selected;
       }
-      return verified;
+      const verified = currentDirectories.filter(d => d.ready);
+      if (verified.length > 0) return verified;
+      return currentDirectories;
     }
 
     // Workflow Bridge: Send Verified to Contact Finder
