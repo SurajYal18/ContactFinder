@@ -7,6 +7,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Directory Finder - Automated Faculty Directory Discovery</title>
+
+  <!-- Immediate Authentication Guard -->
+  <script>
+    (function() {
+      var token = localStorage.getItem("auth_token");
+      if (!token) {
+        window.location.replace("/login.html?redirect=" + encodeURIComponent(window.location.pathname + window.location.search));
+      }
+    })();
+  </script>
+
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -56,6 +67,11 @@
         </div>
         <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Connection Settings">
           <i data-lucide="settings" class="w-5 h-5"></i>
+        </button>
+        <!-- Logout Button -->
+        <button onclick="handleLogout()" class="flex items-center space-x-1.5 px-3 py-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition cursor-pointer" title="Sign Out">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">Logout</span>
         </button>
       </div>
 
@@ -438,6 +454,19 @@
         if (res.ok) {
           dot.className = "w-2 h-2 rounded-full bg-emerald-400";
           text.textContent = "Server Online";
+
+          // Verify session validity with backend
+          const token = localStorage.getItem("auth_token");
+          if (token) {
+            fetch(`${API_BASE}/api/verify-auth`, {
+              headers: { "Authorization": `Bearer ${token}` }
+            }).then(r => r.json()).then(authData => {
+              if (authData && authData.authenticated === false) {
+                localStorage.removeItem("auth_token");
+                window.location.replace("/login.html?redirect=" + encodeURIComponent(window.location.pathname));
+              }
+            }).catch(() => {});
+          }
         } else {
           throw new Error();
         }
@@ -445,6 +474,19 @@
         dot.className = "w-2 h-2 rounded-full bg-amber-400";
         text.textContent = "Server Offline";
       }
+    }
+
+    async function handleLogout() {
+      const token = localStorage.getItem("auth_token");
+      try {
+        await fetch(`${API_BASE}/api/logout`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+      } catch (e) {}
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("auth_user");
+      window.location.replace("/login.html");
     }
 
     // Input mode toggle (Text vs File)
@@ -539,10 +581,23 @@
       formData.append("file", file);
 
       try {
+        const token = localStorage.getItem("auth_token") || "";
         const res = await fetch(`${API_BASE}/api/extract-schools-from-file`, {
           method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          },
           body: formData
         });
+
+        if (res.status === 401) {
+          localStorage.removeItem("auth_token");
+          showToast("Session expired. Please log in again.");
+          setTimeout(() => {
+            window.location.replace("/login.html?redirect=" + encodeURIComponent(window.location.pathname));
+          }, 600);
+          return;
+        }
 
         if (res.ok) {
           const data = await res.json();
@@ -731,11 +786,24 @@
       setStep(2);
 
       try {
+        const token = localStorage.getItem("auth_token") || "";
         const res = await fetch(`${API_BASE}/api/find-directories`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({ schools: schools, concurrency: 5 })
         });
+
+        if (res.status === 401) {
+          localStorage.removeItem("auth_token");
+          showToast("Session expired. Please log in again.");
+          setTimeout(() => {
+            window.location.replace("/login.html?redirect=" + encodeURIComponent(window.location.pathname));
+          }, 600);
+          return;
+        }
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));

@@ -1,13 +1,15 @@
-# FastAPI server exposing endpoints for LangGraph university directory scraper and Excel exporter
 import os
 import re
 import sys
 import uuid
+import hmac
+import hashlib
+import time
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -102,6 +104,73 @@ def deduplicate_contacts(contacts: list) -> list:
             deduped.append(c)
     return deduped
 
+# Authentication Request Schema
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# Retrieve authentication configuration from environment
+# Retrieve authentication configuration exclusively from environment variables (.env)
+def get_auth_credentials():
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path, override=True)
+    user = os.getenv("AUTH_USERNAME", "").strip()
+    pwd = os.getenv("AUTH_PASSWORD", "").strip()
+    secret = os.getenv("AUTH_SECRET_KEY", "contact-collector-secret-key-2026").strip()
+    return user, pwd, secret
+
+# Generate a cryptographically signed session token (7-day validity)
+def generate_auth_token(username: str) -> str:
+    user, pwd, secret = get_auth_credentials()
+    timestamp = int(time.time())
+    payload = f"{username}:{timestamp}"
+    signature = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}:{signature}"
+
+# Validate session token signature and expiration
+def verify_auth_token(token: Optional[str]) -> bool:
+    if not token:
+        return False
+    parts = token.strip().split(":")
+    if len(parts) != 3:
+        return False
+    username, timestamp_str, signature = parts
+    try:
+        timestamp = int(timestamp_str)
+    except ValueError:
+        return False
+
+    user, pwd, secret = get_auth_credentials()
+    if not user or username != user:
+        return False
+
+    # Check 7-day expiration
+    now = time.time()
+    if (now - timestamp) > (7 * 24 * 3600) or timestamp > (now + 300):
+        return False
+
+    expected_payload = f"{username}:{timestamp_str}"
+    expected_sig = hmac.new(secret.encode("utf-8"), expected_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected_sig)
+
+# Extract token from Authorization header, custom header, cookie, or query param
+def get_current_token(request: Request) -> Optional[str]:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    if request.headers.get("X-Auth-Token"):
+        return request.headers.get("X-Auth-Token").strip()
+    if request.cookies.get("auth_token"):
+        return request.cookies.get("auth_token").strip()
+    if "token" in request.query_params:
+        return request.query_params["token"].strip()
+    return None
+
+# Verifies incoming request authentication
+def verify_request_auth(request: Request) -> bool:
+    token = get_current_token(request)
+    return verify_auth_token(token)
+
 # Health check and environment configuration endpoint
 @app.get("/api/health")
 @app.get("/health")
@@ -118,12 +187,60 @@ def health_check():
     )
     return {
         "status": "online",
+        "auth_required": True,
         "gemini_configured": bool(gemini_key),
         "hunter_configured": bool(hunter_key),
         "enable_hunter": enable_hunter,
         "rocketreach_configured": bool(rocketreach_key),
         "enable_rocketreach": enable_rocketreach
     }
+
+# Authenticates user against AUTH_USERNAME and AUTH_PASSWORD in .env
+@app.post("/api/login")
+@app.post("/login")
+def login_endpoint(payload: LoginRequest, response: Response):
+    user, pwd, _ = get_auth_credentials()
+    if not user or not pwd:
+        raise HTTPException(
+            status_code=500,
+            detail="Authentication is not configured on the server. Please set AUTH_USERNAME and AUTH_PASSWORD in .env"
+        )
+    if payload.username.strip() == user and payload.password.strip() == pwd:
+        token = generate_auth_token(user)
+        response.set_cookie(
+            key="auth_token",
+            value=token,
+            max_age=7 * 24 * 3600,
+            httponly=False,
+            samesite="lax",
+            path="/"
+        )
+        return {
+            "success": True,
+            "message": "Login successful",
+            "token": token,
+            "username": user
+        }
+    raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+# Verifies current session token
+@app.get("/api/verify-auth")
+@app.get("/verify-auth")
+def verify_auth_endpoint(request: Request):
+    token = get_current_token(request)
+    is_valid = verify_auth_token(token)
+    user, _, _ = get_auth_credentials()
+    return {
+        "authenticated": is_valid,
+        "username": user if is_valid else None
+    }
+
+# Clears authentication cookie
+@app.post("/api/logout")
+@app.post("/logout")
+def logout_endpoint(response: Response):
+    response.delete_cookie(key="auth_token", path="/")
+    return {"success": True, "message": "Logged out successfully"}
 
 # Maximum simultaneous requests for scraping and Gemini AI extraction
 MAX_CONCURRENT_REQUESTS = 5
@@ -247,7 +364,9 @@ def process_single_url(url: str, prompt: str, enrich_provider: str, enrich_limit
 # Main scraping and extraction endpoint
 @app.post("/api/scrape")
 @app.post("/scrape")
-def scrape_directories(req: ScrapeRequest):
+def scrape_directories(req: ScrapeRequest, request: Request):
+    if not verify_request_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized. Please log in.")
     if not req.urls:
         raise HTTPException(status_code=400, detail="At least one URL must be provided.")
 
@@ -413,7 +532,9 @@ def download_excel(filename: str):
 # ==========================================
 @app.post("/api/find-directories")
 @app.post("/find-directories")
-def find_directories_endpoint(payload: DirectorySearchRequest):
+def find_directories_endpoint(payload: DirectorySearchRequest, request: Request):
+    if not verify_request_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized. Please log in.")
     schools = []
     if payload.text and payload.text.strip():
         schools.extend(extract_schools_from_text(payload.text))
@@ -487,7 +608,9 @@ except ImportError:
 if MULTIPART_AVAILABLE:
     @app.post("/api/extract-schools-from-file")
     @app.post("/extract-schools-from-file")
-    async def extract_schools_from_file_endpoint(file: UploadFile = File(...)):
+    async def extract_schools_from_file_endpoint(request: Request, file: UploadFile = File(...)):
+        if not verify_request_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized. Please log in.")
         content = await file.read()
         fname = (file.filename or "upload").lower()
         suffix = os.path.splitext(fname)[1] or ".tmp"
@@ -519,7 +642,9 @@ if MULTIPART_AVAILABLE:
 else:
     @app.post("/api/extract-schools-from-file")
     @app.post("/extract-schools-from-file")
-    async def extract_schools_from_file_fallback():
+    async def extract_schools_from_file_fallback(request: Request):
+        if not verify_request_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized. Please log in.")
         raise HTTPException(
             status_code=501,
             detail="File upload requires python-multipart to be installed on the server."
@@ -529,6 +654,24 @@ else:
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
 DIRECTORY_HTML = os.path.join(FRONTEND_DIR, "directory.html")
+LOGIN_HTML = os.path.join(FRONTEND_DIR, "login.html")
+
+# Serve login.html with strict no-cache headers
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/login.html", response_class=HTMLResponse, include_in_schema=False)
+def serve_login():
+    if os.path.isfile(LOGIN_HTML):
+        with open(LOGIN_HTML, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+    raise HTTPException(status_code=404, detail="Login page not found")
 
 # Serve index.html (Contact Finder) with strict no-cache headers
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
