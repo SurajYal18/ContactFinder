@@ -132,14 +132,22 @@ def auto_submit_department_form(url: str, html: str) -> str:
                 pass
     return html
 
-# Discovers pagination links on the directory page (e.g. ?page=2, ?p=2, next page)
-def discover_pagination_urls(base_url: str, html: str, max_pages: int = 4) -> list:
+# Discovers pagination links on the directory page (path-based /page/N/, query-based ?page=N, rel=next, and page ranges)
+def discover_pagination_urls(base_url: str, html: str, max_pages: int = 20) -> list:
     soup = BeautifulSoup(html, "html.parser")
     parsed_base = urlparse(base_url)
     base_domain = parsed_base.netloc.lower()
-    pagination_links = []
-    seen = {base_url.split("#")[0]}
 
+    seen = {base_url.split("#")[0].rstrip("/")}
+    pagination_links = []
+
+    path_page_nums = []
+    path_pattern_template = None
+
+    query_page_nums = []
+    query_pattern_template = None
+
+    # 1. Scan all links on the page for pagination patterns
     for a in soup.find_all("a", href=True):
         href = a.get("href", "").strip()
         full_url = urljoin(base_url, href).split("#")[0]
@@ -147,41 +155,107 @@ def discover_pagination_urls(base_url: str, html: str, max_pages: int = 4) -> li
         if parsed_target.netloc.lower() != base_domain:
             continue
 
-        query = parsed_target.query.lower()
+        clean_target = full_url.rstrip("/")
+
+        # A) Check path-based pagination e.g. /page/2/ or /p/2/
+        m_path = re.search(r'/(?:page|paged?|p)/(\d+)/?$', parsed_target.path, re.I)
+        if m_path:
+            p_num = int(m_path.group(1))
+            path_page_nums.append(p_num)
+            if not path_pattern_template:
+                new_path = parsed_target.path[:m_path.start(1)] + "{}" + parsed_target.path[m_path.end(1):]
+                path_pattern_template = parsed_target._replace(path=new_path).geturl()
+            continue
+
+        # B) Check query-based pagination e.g. ?page=2, ?p=2, ?pg=2, ?paged=2
+        m_query = re.search(r'([?&](?:page|p|pg|paged|page_number|start)=)(\d+)', full_url, re.I)
+        if m_query:
+            p_num = int(m_query.group(2))
+            query_page_nums.append(p_num)
+            if not query_pattern_template:
+                prefix = full_url[:m_query.start(2)]
+                suffix = full_url[m_query.end(2):]
+                query_pattern_template = f"{prefix}{{}}{suffix}"
+            continue
+
+        # C) Check standard rel="next" or class/text indicators
         classes = " ".join(a.get("class", [])).lower()
         rel = (a.get("rel") or [""])[0].lower() if isinstance(a.get("rel"), list) else str(a.get("rel") or "").lower()
+        a_text = a.get_text(" ", strip=True).lower()
 
-        is_page_param = any(param in query for param in ["page=", "p=", "pg=", "pagenum=", "start="])
         is_page_rel = rel in ["next", "next page"]
-        is_page_class = any(c in classes for c in ["pagination", "page-numbers", "page-link", "next"])
+        is_page_class = any(c in classes for c in ["next", "page-next", "pagination-next"])
+        is_page_text = a_text in ["next", "next page", "›", "»", "❯", ">", "next >", "next »"]
 
-        if (is_page_param or is_page_rel or is_page_class) and full_url not in seen:
-            seen.add(full_url)
+        if (is_page_rel or is_page_class or is_page_text) and clean_target not in seen:
+            seen.add(clean_target)
             pagination_links.append(full_url)
-            if len(pagination_links) >= max_pages:
-                break
+
+    # 2. Check for "Page 1 of N" or "Page X of Y" in body text
+    text_max_pages = None
+    m_page_text = re.search(r'\bpage\s+\d+\s+of\s+(\d+)\b', html, re.I)
+    if m_page_text:
+        text_max_pages = int(m_page_text.group(1))
+
+    # 3. If path-based pagination template found, generate the complete numeric range
+    if path_pattern_template and path_page_nums:
+        max_seen = max(path_page_nums)
+        if text_max_pages and text_max_pages > max_seen:
+            max_seen = text_max_pages
+        effective_max = min(max_seen, max_pages)
+        for p in range(2, effective_max + 1):
+            gen_url = path_pattern_template.format(p)
+            clean_gen = gen_url.rstrip("/")
+            if clean_gen not in seen:
+                seen.add(clean_gen)
+                pagination_links.append(gen_url)
+
+    # 4. If query-based pagination template found, generate the complete numeric range
+    if query_pattern_template and query_page_nums:
+        max_seen = max(query_page_nums)
+        if text_max_pages and text_max_pages > max_seen:
+            max_seen = text_max_pages
+        effective_max = min(max_seen, max_pages)
+        for p in range(2, effective_max + 1):
+            gen_url = query_pattern_template.format(p)
+            clean_gen = gen_url.rstrip("/")
+            if clean_gen not in seen:
+                seen.add(clean_gen)
+                pagination_links.append(gen_url)
 
     return pagination_links
 
-# Crawls pagination pages and combines their HTML
+# Crawls pagination pages and combines their HTML in sequence
 def crawl_pagination_pages(base_url: str, initial_html: str, page_urls: list) -> str:
-    combined_html = [initial_html]
+    if not page_urls:
+        return initial_html
+
+    print(f"[*] Crawling {len(page_urls)} pagination pages for {base_url}...", flush=True)
+    combined_pages = {}
+
     def fetch_p(p_url):
         try:
-            r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=10, verify=False)
-            if r.status_code == 200:
+            r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=12, verify=False)
+            if r.status_code == 200 and len(r.text) > 1000:
                 return (p_url, r.text)
         except Exception:
             pass
-        return None
+        return (p_url, None)
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(fetch_p, u) for u in page_urls]
         for f in as_completed(futures):
-            res = f.result()
-            if res:
-                p_url, p_html = res
-                combined_html.append(f"\n<!-- NEXT DIRECTORY PAGE: {p_url} -->\n{p_html}")
+            p_url, p_html = f.result()
+            if p_html:
+                combined_pages[p_url] = p_html
+
+    # Append pages in the original discovered sequence order
+    combined_html = [initial_html]
+    for u in page_urls:
+        if u in combined_pages:
+            combined_html.append(f"\n<!-- NEXT DIRECTORY PAGE: {u} -->\n{combined_pages[u]}")
+
+    print(f"[+] Successfully merged {len(combined_pages)} additional directory pages.", flush=True)
     return "\n\n".join(combined_html)
 
 # Fetches web content handling standard GET, PDF documents, or form-based search portals
@@ -232,7 +306,7 @@ def fetch_page_content(url: str) -> str:
     html = auto_submit_department_form(clean_url, html)
 
     # Auto-detect directory pagination and crawl subsequent pages (e.g. South College, Wiregrass Tech)
-    p_urls = discover_pagination_urls(clean_url, html, max_pages=4)
+    p_urls = discover_pagination_urls(clean_url, html, max_pages=20)
     if p_urls:
         html = crawl_pagination_pages(clean_url, html, p_urls)
 
@@ -577,6 +651,13 @@ def is_faculty_profile_link(full_url: str, text: str, base_domain: str, parent_c
     path_segments = [s for s in path_lower.strip("/").split("/") if s]
     if not path_segments:
         return False
+
+    # Explicitly exclude directory pagination URLs from being treated as single profile links
+    if re.search(r'/(?:page|paged?|p)/\d+/?$', path_lower) or re.search(r'[?&](?:page|p|pg|paged|page_number)=\d+', full_url.lower()):
+        return False
+    if path_segments and path_segments[-1].isdigit():
+        return False
+
     for seg in path_segments:
         clean_seg = re.sub(r'\.(?:php|html|htm|aspx)$', '', seg)
         if any(term in clean_seg for term in EXCLUDE_URL_TERMS):
