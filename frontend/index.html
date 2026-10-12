@@ -390,7 +390,6 @@
 
     let extractedData = [];
     let currentExportFilename = "contacts_export.xlsx";
-    let currentServerDownloadUrl = "";
     let timerInterval = null;
 
     let selectedProvider = "hunter";
@@ -769,7 +768,6 @@
         document.getElementById("metric-phones").textContent = phoneCount;
 
         currentExportFilename = data.filename || "contacts_export.xlsx";
-        currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
 
         populateTable(extractedData);
         const failedList = data.failed_urls || [];
@@ -972,12 +970,7 @@
 
     function downloadExcelSpreadsheet() {
       if (!extractedData || extractedData.length === 0) {
-        if (currentServerDownloadUrl) {
-          window.location.href = currentServerDownloadUrl;
-          showToast("Downloading generated Excel spreadsheet...");
-          return;
-        }
-        alert("No contact records available to download.");
+        showToast("No contact records available to download.");
         return;
       }
 
@@ -991,6 +984,10 @@
         "Email": (c.email || "").trim(),
         "Phone": (c.phone || "").trim()
       }));
+
+      const nameInput = (document.getElementById("filename-input")?.value || "").trim();
+      let outName = nameInput || currentExportFilename || "contacts_export.xlsx";
+      if (!outName.endsWith(".xlsx")) outName += ".xlsx";
 
       if (typeof XLSX !== "undefined") {
         try {
@@ -1012,18 +1009,43 @@
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, "Contacts");
 
-          let outName = currentExportFilename || "contacts_export.xlsx";
-          if (!outName.endsWith(".xlsx")) outName += ".xlsx";
           XLSX.writeFile(wb, outName);
-          showToast(`Downloaded ${outName}`);
+          showToast(`Downloaded ${outName} (${formattedRows.length} contacts)`);
           return;
         } catch (err) {
           console.warn("Client-side Excel export fallback triggered:", err);
         }
       }
 
-      if (currentServerDownloadUrl) {
-        window.location.href = currentServerDownloadUrl;
+      // Pure client-side CSV download fallback via browser Blob (zero server interaction)
+      try {
+        const headers = ["First Name", "Last Name", "Credentials", "Title", "School / Institution", "Campus", "Email", "Phone"];
+        const csvRows = [
+          headers.join(","),
+          ...formattedRows.map(r => [
+            `"${(r["First Name"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Last Name"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Credentials"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Title"] || "").replace(/"/g, '""')}"`,
+            `"${(r["School / Institution"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Campus"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Email"] || "").replace(/"/g, '""')}"`,
+            `"${(r["Phone"] || "").replace(/"/g, '""')}"`
+          ].join(","))
+        ];
+        const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const csvName = outName.replace(/\.xlsx$/i, ".csv");
+        a.download = csvName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Downloaded ${csvName} (${formattedRows.length} contacts)`);
+      } catch (e) {
+        showToast("Failed to generate file download.");
       }
     }
   </script>

@@ -363,18 +363,13 @@ def scrape_directories(req: ScrapeRequest):
         res_status = "no_contacts"
         res_message = "No nursing faculty or staff contacts were found for this directory URL."
 
-    # Determine Excel output file path
+    # Determine export filename for client-side download
     unique_id = uuid.uuid4().hex[:8]
     base_name = req.output_filename or f"contacts_export_{unique_id}.xlsx"
     if not base_name.endswith(".xlsx"):
         base_name += ".xlsx"
 
-    excel_path = os.path.join(EXPORTS_DIR, base_name)
-    try:
-        export_contacts_to_excel(unique_contacts, excel_path)
-    except Exception as exc:
-        print(f"Excel export warning: {exc}")
-
+    # Client-side SheetJS directly handles Excel generation and downloads (zero server storage/backup)
     return {
         "status": res_status,
         "message": res_message,
@@ -385,7 +380,7 @@ def scrape_directories(req: ScrapeRequest):
         "failed_count": len(failed_urls),
         "contacts": unique_contacts,
         "filename": base_name,
-        "download_url": f"/api/download/{base_name}",
+        "download_url": "",
         "url_logs": url_logs,
         "results": url_logs,
         "failed_urls": failed_urls,

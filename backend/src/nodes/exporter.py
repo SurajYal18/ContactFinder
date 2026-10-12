@@ -52,7 +52,14 @@ def export_contacts_to_excel(contacts: list, output_filename: str) -> str:
 # LangGraph node function for exporting contacts
 def export_node(state: ScraperState) -> ScraperState:
     contacts = state.get("contacts", [])
-    output_file = state.get("output_file") or "nursing_faculty.xlsx"
+    output_file = state.get("output_file")
+
+    # If no output_file is explicitly provided (e.g. web/API requests), skip disk writes
+    if not output_file:
+        return {
+            "saved_path": "",
+            "status": f"Extracted {len(contacts)} contacts ready for client-side download."
+        }
 
     if not output_file.endswith(".xlsx"):
         output_file += ".xlsx"
