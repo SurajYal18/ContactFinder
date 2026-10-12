@@ -1,15 +1,16 @@
-# ContactFinder - Directory Contact Scraper
+# ContactCollectorAndEnricher
 
-An automated university directory scraper and contact discovery service powered by FastAPI, LangGraph, Google Gemini AI, and Hunter.io.
+An automated university directory scraper, directory resolver, and contact discovery service powered by FastAPI, LangGraph, Google Gemini AI, and Hunter.io.
 
 ## Features
 
-- **Automated Directory Scraping**: Crawls university and departmental directories with HTML sanitization.
+- **Contact Finder**: Crawls university and departmental directories with HTML sanitization.
+- **Directory Finder**: Resolves and verifies official faculty directory URLs directly from institution names or uploaded documents.
 - **AI Extraction**: Uses Google Gemini 2.5 Flash Lite to extract faculty, staff, and leadership into structured data.
 - **Contact Enrichment**: Integrates with Hunter.io to discover verified email addresses and domains.
-- **Excel Spreadsheet Export**: Exports records directly into Excel workbooks (`.xlsx`).
-- **Modern Web Dashboard**: Real-time extraction progress, searchable records table, and direct download links.
-- **Serverless Ready**: Pre-configured for deployment on Vercel with Python serverless functions.
+- **Client-Side Excel & CSV Export**: Instant, zero-server-storage downloads formatted into 8 clean columns via SheetJS.
+- **Modern Web Dashboard**: Real-time progress tracking, searchable records table, and failed links inspection.
+- **Deployment Ready**: Configured for both Vercel Serverless and AWS EC2 / Docker.
 
 ## Project Structure
 
@@ -21,17 +22,18 @@ An automated university directory scraper and contact discovery service powered 
 │   ├── server.py           # FastAPI application
 │   └── requirements.txt    # Backend Python dependencies
 ├── frontend/
-│   └── index.html          # Single-page web dashboard
+│   ├── index.html          # Contact Finder UI
+│   └── directory.html      # Directory Finder UI
 ├── vercel.json             # Vercel deployment configuration
-└── requirements.txt        # Root dependencies for Vercel Python runtime
+└── requirements.txt        # Root dependencies
 ```
 
 ## Local Development
 
 1. **Clone repository:**
    ```bash
-   git clone https://github.com/SurajYal18/ContactFinder.git
-   cd ContactFinder
+   git clone https://github.com/Mobiuso/ContactCollectorAndEnricher.git
+   cd ContactCollectorAndEnricher
    ```
 
 2. **Install dependencies:**
