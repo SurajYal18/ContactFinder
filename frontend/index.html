@@ -630,6 +630,14 @@
       const urlList = rawUrls.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
       addLog(`Initiating contact discovery across ${urlList.length} URL(s)...`);
 
+      // Show active extracting state in results table
+      const tbody = document.getElementById("results-table-body");
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-indigo-400 font-sans text-xs"><div class="flex items-center justify-center space-x-2"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping"></span><span class="font-medium text-slate-300">Scraping directory and extracting faculty contacts with Gemini AI... Please wait.</span></div></td></tr>`;
+      }
+      const countLabel = document.getElementById("results-count");
+      if (countLabel) countLabel.textContent = "Extracting...";
+
       try {
         const payload = {
           urls: urlList,
@@ -666,11 +674,20 @@
         setStep(4);
         extractedData = data.contacts || [];
 
-        // Update stats
-        document.getElementById("metric-total").textContent = data.total_extracted || extractedData.length;
-        document.getElementById("metric-unique").textContent = data.unique_extracted || extractedData.length;
-        document.getElementById("metric-success").textContent = data.successful_urls || 0;
-        document.getElementById("metric-failed").textContent = data.failed_urls || 0;
+        // Update stats (safely format numbers so [object Object] never occurs)
+        document.getElementById("metric-total").textContent = data.total_extracted !== undefined ? data.total_extracted : extractedData.length;
+        document.getElementById("metric-unique").textContent = data.unique_extracted !== undefined ? data.unique_extracted : (data.unique_contacts !== undefined ? data.unique_contacts : extractedData.length);
+
+        const successCount = typeof data.successful_count === 'number'
+          ? data.successful_count
+          : (Array.isArray(data.successful_urls) ? data.successful_urls.length : (data.successful_urls || 0));
+
+        const failedCount = typeof data.failed_count === 'number'
+          ? data.failed_count
+          : (Array.isArray(data.failed_urls) ? data.failed_urls.length : (data.failed_urls || 0));
+
+        document.getElementById("metric-success").textContent = successCount;
+        document.getElementById("metric-failed").textContent = failedCount;
 
         const emailCount = extractedData.filter(c => c.email && c.email.trim()).length;
         const phoneCount = extractedData.filter(c => c.phone && c.phone.trim()).length;
@@ -681,6 +698,7 @@
         currentServerDownloadUrl = `${API_BASE}${data.download_url}`;
 
         populateTable(extractedData);
+        setStep(5); // Mark step 4 as completed (green checkmark)
 
         clearInterval(timerInterval);
         timerBadge.textContent = `Completed (${seconds}s)`;

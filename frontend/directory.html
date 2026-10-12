@@ -769,6 +769,7 @@
 
         document.getElementById("results-section").classList.remove("hidden");
         renderTable();
+        setStep(5);
         document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
 
         showToast(`Discovered ${verifiedCount} active faculty directories!`);
