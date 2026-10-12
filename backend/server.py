@@ -258,20 +258,46 @@ def scrape_directories(req: ScrapeRequest):
     if not gemini_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured in environment.")
 
-    # Flatten and clean URLs list
+    # Flatten and clean URLs list, while collecting any raw school names
     cleaned_urls = []
+    potential_schools = []
     for u in req.urls:
-        for sub in u.split(","):
+        for sub in u.split("\n"):
             sub = sub.strip()
+            if not sub:
+                continue
             m = re.search(r'https?://[^\s"\'\]\)>]+', sub)
             if m:
                 clean_link = m.group(0).rstrip('"\'.,;:)')
                 cleaned_urls.append(clean_link)
             elif sub.startswith("http"):
                 cleaned_urls.append(sub.strip().strip('"\'[]<>'))
+            elif sub.startswith("www."):
+                cleaned_urls.append("https://" + sub.strip())
+            elif len(sub) >= 3:
+                potential_schools.append(sub)
+
+    # If no URLs were found, but school names were provided, auto-discover directory URLs!
+    if not cleaned_urls and potential_schools:
+        potential_schools = deduplicate_school_names(potential_schools)
+        print(f"[*] Contact Finder: Auto-discovering directory URLs for {len(potential_schools)} school(s)...")
+        with ThreadPoolExecutor(max_workers=min(5, len(potential_schools))) as executor:
+            fut_map = {executor.submit(find_directory_for_school, s, gemini_key): s for s in potential_schools}
+            for fut in as_completed(fut_map):
+                try:
+                    res = fut.result()
+                    if res and res.get("directory_url") and res.get("is_ready_for_extractor"):
+                        cleaned_urls.append(res["directory_url"])
+                except Exception as e:
+                    print(f"Warning: Directory lookup error: {e}")
 
     if not cleaned_urls:
-        raise HTTPException(status_code=400, detail="No valid HTTP/HTTPS URLs found in request.")
+        if potential_schools:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Entered school names ({', '.join(potential_schools[:3])}), but no active faculty directory URLs could be located. Please use the Directory Finder tab to review."
+            )
+        raise HTTPException(status_code=400, detail="No valid HTTP/HTTPS URLs found in request. Please paste directory URLs or school names.")
 
     # Compile the LangGraph pipeline
     compiled_graph = create_scraper_graph()

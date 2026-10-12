@@ -404,6 +404,18 @@
       if (apiInput) apiInput.value = API_BASE;
 
       checkHealth();
+
+      // Check if user transferred school names from Contact Finder
+      const pendingSchools = localStorage.getItem("pending_directory_schools");
+      if (pendingSchools) {
+        const input = document.getElementById("schools-input");
+        if (input) {
+          input.value = pendingSchools;
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          showToast("Transferred school names from Contact Finder!");
+        }
+        localStorage.removeItem("pending_directory_schools");
+      }
     }
 
     if (document.readyState === "loading") {
