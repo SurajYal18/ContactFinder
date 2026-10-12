@@ -396,6 +396,7 @@ def scrape_directories(req: ScrapeRequest):
         "filename": base_name,
         "download_url": f"/api/download/{base_name}",
         "url_logs": url_logs,
+        "results": url_logs,
         "failed_urls": failed_urls,
         "successful_urls": successful_urls
     }

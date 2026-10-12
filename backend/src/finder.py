@@ -126,7 +126,33 @@ KNOWN_VERIFIED = {
     'wesleyan college': 'https://www.wesleyancollege.edu/academics/faculty-listing.cfm',
     'west georgia technical college': 'https://www.westgatech.edu/department/school-of-nursing/',
     'west georgia tech': 'https://www.westgatech.edu/department/school-of-nursing/',
-    'wiregrass georgia technical college': 'https://www.wiregrass.edu/about/directory'
+    'wiregrass georgia technical college': 'https://www.wiregrass.edu/about/directory',
+    'chipola college': 'https://www.chipola.edu/academics/academic-departments/health-sciences/nursing/',
+    'chipola': 'https://www.chipola.edu/academics/academic-departments/health-sciences/nursing/',
+    'eastern florida state college': 'https://www.easternflorida.edu/academics/health-sciences/nursing/',
+    'emerald coast technical college': 'https://www.ectc.edu/',
+    'florida panhandle technical college': 'https://www.fptc.edu/',
+    'florida state university': 'https://nursing.fsu.edu/faculty-staff',
+    'florida state university schools': 'https://nursing.fsu.edu/faculty-staff',
+    'fort myers technical college': 'https://www.fortmyerstech.edu/programs/health-science/',
+    'fred k. marchman technical college': 'https://mttc.pasco.k12.fl.us/',
+    'fvi school of nursing and technology': 'https://fvi.edu/faculty/',
+    'hope college of arts & sciences': 'https://hopecollegefl.edu/faculty/',
+    'indian river state college': 'https://irsc.edu/programs/nursing.html',
+    'itech glades technical college': 'https://www.itech.edu/',
+    'lindsey hopkins technical college': 'https://www.lindseyhopkins.edu/',
+    'lively technical center': 'https://www.livelytech.com/',
+    'manatee technical college': 'https://www.manateetech.edu/programs/health-science/',
+    'marion technical college': 'https://www.mariontc.edu/programs/health-science/',
+    'miami dade college': 'https://www.mdc.edu/nursing/faculty-staff.aspx',
+    'palm harbor university': 'https://www.pcsb.org/phuhs',
+    'pinellas technical college': 'https://www.myptc.edu/programs/health-science/',
+    'radford m. locklin technical college': 'https://www.locklintech.com/programs/',
+    'santa fe college': 'https://www.sfcollege.edu/directory',
+    'st. johns river state college': 'https://www.sjrstate.edu/nursing',
+    'tallahassee state college': 'https://www.tsc.fl.edu/academics/academic-divisions/healthcare/',
+    'taylor college': 'https://www.taylorcollege.edu/',
+    'treasure coast technical college': 'https://www.indianriverschools.org/tctc'
 }
 
 def extract_schools_from_text(text: str) -> list:
@@ -509,16 +535,25 @@ def find_directory_for_school(school: str, gemini_key: str = "") -> dict:
 
     # 5. Verify candidate URLs
     best_result = None
+    best_score = -1
     for cand in candidate_urls:
         ver = verify_faculty_directory_url(cand)
-        if ver["valid"]:
+        cand_lower = cand.lower()
+        bonus = 0
+        if any(term in cand_lower for term in ['/faculty', '/faculty-staff', '/faculty-and-staff', '/directory', '/people', '/personnel']):
+            bonus += 20
+        total_eval_score = ver.get("score", 0) + bonus
+
+        if ver.get("valid"):
+            if total_eval_score > best_score:
+                best_score = total_eval_score
+                best_result = ver
+        elif not best_result or (best_score == -1 and total_eval_score > best_score):
             best_result = ver
-            break
-        elif not best_result:
-            best_result = ver
+            best_score = total_eval_score
 
     if not best_result:
-        best_result = {"url": candidate_urls[0], "status": "Unverified", "valid": False}
+        best_result = {"url": candidate_urls[0] if candidate_urls else "", "status": "Unverified", "valid": False}
 
     return {
         "school": display_school,

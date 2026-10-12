@@ -519,6 +519,8 @@
           card.classList.remove("border-indigo-500/60", "bg-indigo-950/20");
         }
       });
+    }
+
     function transferSchoolsToDirectoryFinder() {
       const raw = document.getElementById("urls-input").value.trim();
       if (raw) {
@@ -633,6 +635,7 @@
       }, 1000);
 
       setStep(1);
+      const urlList = rawUrls.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
       const isUrls = urlList.some(u => u.startsWith("http://") || u.startsWith("https://") || u.startsWith("www."));
       if (isUrls) {
         addLog(`Initiating contact discovery across ${urlList.length} URL(s)...`);
@@ -671,12 +674,16 @@
         const data = await res.json();
         setStep(3);
 
-        if (data.results) {
-          data.results.forEach(r => {
-            if (r.status === "success") {
-              addLog(`✓ [EXTRACTED] ${r.school || r.url} – Found ${r.count} contact(s).`);
+        const logs = data.url_logs || data.results || [];
+        if (logs.length > 0) {
+          logs.forEach(r => {
+            const label = r.school || r.university || r.url || "Directory";
+            if (r.status === "success" && r.count > 0) {
+              addLog(`✓ [EXTRACTED] <strong>${label}</strong> – Found ${r.count} contact(s).`);
+            } else if (r.status === "success") {
+              addLog(`ℹ️ [0 CONTACTS] <strong>${label}</strong> – Page opened successfully but contained no faculty contact records.`);
             } else {
-              addLog(`❌ [FAILED] ${r.school || r.url} – Reason: ${r.reason || r.error}`);
+              addLog(`❌ [0 CONTACTS] <strong>${label}</strong> – ${r.reason || r.message || r.error || 'No faculty records found.'}`);
             }
           });
         }
@@ -744,7 +751,16 @@
       document.getElementById("count-phone").textContent = extractedData.filter(c => c.phone).length;
 
       if (!contacts || contacts.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-500 font-sans text-xs">No contacts match the current criteria.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400 font-sans text-xs">
+          <div class="max-w-md mx-auto space-y-2">
+            <p class="font-medium text-slate-200">No faculty contacts were found matching the provided URL(s) or school name(s).</p>
+            <p class="text-slate-400 text-[11px] leading-relaxed">
+              High schools, nursing homes, and training centers typically do not host public college faculty directories.
+              For higher-ed colleges, please verify the exact directory roster URL in the
+              <button type="button" onclick="transferSchoolsToDirectoryFinder()" class="text-indigo-400 font-semibold underline hover:text-indigo-300 cursor-pointer">Directory Finder</button> tab first.
+            </p>
+          </div>
+        </td></tr>`;
         return;
       }
 
@@ -806,6 +822,11 @@
 
     function downloadExcelSpreadsheet() {
       if (!extractedData || extractedData.length === 0) {
+        if (currentServerDownloadUrl) {
+          window.location.href = currentServerDownloadUrl;
+          showToast("Downloading generated Excel spreadsheet...");
+          return;
+        }
         alert("No contact records available to download.");
         return;
       }
