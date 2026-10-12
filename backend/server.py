@@ -277,27 +277,16 @@ def scrape_directories(req: ScrapeRequest):
             elif len(sub) >= 3:
                 potential_schools.append(sub)
 
-    # If no URLs were found, but school names were provided, auto-discover directory URLs!
-    if not cleaned_urls and potential_schools:
-        potential_schools = deduplicate_school_names(potential_schools)
-        print(f"[*] Contact Finder: Auto-discovering directory URLs for {len(potential_schools)} school(s)...")
-        with ThreadPoolExecutor(max_workers=min(5, len(potential_schools))) as executor:
-            fut_map = {executor.submit(find_directory_for_school, s, gemini_key): s for s in potential_schools}
-            for fut in as_completed(fut_map):
-                try:
-                    res = fut.result()
-                    if res and res.get("directory_url") and res.get("is_ready_for_extractor"):
-                        cleaned_urls.append(res["directory_url"])
-                except Exception as e:
-                    print(f"Warning: Directory lookup error: {e}")
-
     if not cleaned_urls:
         if potential_schools:
             raise HTTPException(
                 status_code=400,
-                detail=f"Entered school names ({', '.join(potential_schools[:3])}), but no active faculty directory URLs could be located. Please use the Directory Finder tab to review."
+                detail="Contact Finder strictly accepts faculty directory URLs (e.g., https://...). To search by school names or upload documents, please switch to the Directory Finder tab."
             )
-        raise HTTPException(status_code=400, detail="No valid HTTP/HTTPS URLs found in request. Please paste directory URLs or school names.")
+        raise HTTPException(
+            status_code=400,
+            detail="No valid HTTP/HTTPS URLs found in request. Please paste faculty directory URLs (e.g., https://...)."
+        )
 
     # Compile the LangGraph pipeline
     compiled_graph = create_scraper_graph()
