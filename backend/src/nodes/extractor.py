@@ -2,6 +2,9 @@ import os
 import sys
 import json
 import time
+import re
+import html
+import urllib.parse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -16,6 +19,48 @@ load_dotenv()
 
 # Dedicated Gemini AI model
 TARGET_MODEL = "gemini-3.5-flash-lite"
+
+# Automatically decodes obfuscated, shifted, or entity-encoded emails
+def auto_decode_shifted_email(raw_email: str, phone: str = "", domain_hint: str = "") -> str:
+    if not raw_email:
+        return ""
+    raw = html.unescape(urllib.parse.unquote(str(raw_email))).strip()
+    raw = re.sub(r'^mailto:\s*', '', raw, flags=re.IGNORECASE).strip()
+    
+    raw = re.sub(r'\s*\[at\]\s*|\s*\(at\)\s*|\s+AT\s+', '@', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'\s*\[dot\]\s*|\s*\(dot\)\s*|\s+DOT\s+', '.', raw, flags=re.IGNORECASE)
+    
+    if "@" in raw and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', raw):
+        if domain_hint:
+            raw = raw.replace("example.edu", domain_hint)
+        return raw
+
+    if "\n" in raw:
+        raw = raw.replace("\n", "\\n")
+
+    digits = [c for c in str(phone) if c.isdigit()]
+    if digits:
+        shift = int(digits[-1]) + 1 - int(digits[0])
+        cand = "".join(chr(ord(c) + shift) for c in raw)
+        if domain_hint:
+            cand = cand.replace("example.edu", domain_hint)
+        if "@" in cand and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', cand):
+            return cand
+
+    for s in range(-15, 16):
+        try:
+            cand = "".join(chr(ord(c) + s) for c in raw)
+            if domain_hint:
+                cand = cand.replace("example.edu", domain_hint)
+            if "@" in cand:
+                parts = cand.split("@")
+                if len(parts) == 2 and parts[0] and "." in parts[1]:
+                    if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', cand):
+                        return cand
+        except Exception:
+            continue
+
+    return raw
 
 # Calls Gemini AI to extract nursing faculty contacts as structured JSON
 def call_gemini_extraction(clean_text: str, user_prompt: str, api_key: str, university: str = "") -> list:
@@ -129,6 +174,15 @@ def extract_node(state: ScraperState) -> ScraperState:
             c["campus"] = ""
         else:
             c["campus"] = camp
+
+    # 3. Clean, normalize, and deobfuscate email addresses
+    domain = state.get("domain", "").lower()
+    for c in contacts:
+        raw_em = str(c.get("email") or "").strip()
+        ph = str(c.get("phone") or "").strip()
+        if raw_em:
+            dec_em = auto_decode_shifted_email(raw_em, phone=ph, domain_hint=domain)
+            c["email"] = dec_em
 
     return {
         "contacts": contacts,

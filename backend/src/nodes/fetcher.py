@@ -1,5 +1,7 @@
 import io
 import re
+import html
+import urllib.parse
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
@@ -28,18 +30,85 @@ def decode_cloudflare_email(cfemail: str) -> str:
     except Exception:
         return ""
 
-# Cleans raw HTML text into readable lines preserving emails and phone links
-def sanitize_raw_html(html: str) -> str:
-    # Decode Cloudflare protected emails: data-cfemail
+# Decodes Caesar cipher shifted email strings (TerminalFour emailob, data-tel, or shifted ASCII)
+def decode_caesar_shifted_email(raw_str: str, key: str = "", domain_hint: str = "") -> str:
+    if not raw_str:
+        return ""
+    # Unescape HTML entities (e.g. &gt;, &lt;, &commat;, &#64;, etc.)
+    raw = html.unescape(str(raw_str)).strip()
+    
+    # Check if already a valid email
+    if "@" in raw and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', raw):
+        return raw
+
+    # Handle unescaped newline that came from \n in source
+    if "\n" in raw:
+        raw = raw.replace("\n", "\\n")
+
+    # If key/phone number is provided (e.g. TerminalFour emailob data-tel)
+    digits = [c for c in key if c.isdigit()]
+    if digits:
+        first_val = int(digits[0])
+        last_val = int(digits[-1])
+        shift = last_val + 1 - first_val
+        cand = "".join(chr(ord(c) + shift) for c in raw)
+        if domain_hint:
+            cand = cand.replace("example.edu", domain_hint)
+        if "@" in cand and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', cand):
+            return cand
+
+    # Brute-force Caesar shift from -15 to +15
+    for s in range(-15, 16):
+        try:
+            cand = "".join(chr(ord(c) + s) for c in raw)
+            if domain_hint:
+                cand = cand.replace("example.edu", domain_hint)
+            if "@" in cand:
+                parts = cand.split("@")
+                if len(parts) == 2 and parts[0] and "." in parts[1]:
+                    if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', cand):
+                        return cand
+        except Exception:
+            continue
+
+    return raw
+
+# Deobfuscates emails in raw HTML across various CMS obfuscation schemes
+def deobfuscate_emails_in_html(html_str: str, domain_hint: str = "") -> str:
+    if not html_str:
+        return ""
+
+    # 1. Decode Cloudflare data-cfemail
     def replace_cf_email(match):
-        dec = decode_cloudflare_email(match.group(1))
-        return f" Email: {dec} " if dec else " "
-    clean = re.sub(r'data-cfemail=[\'"]([a-f0-9]+)[\'"]', replace_cf_email, html, flags=re.IGNORECASE)
+        cf = match.group(1)
+        dec = decode_cloudflare_email(cf)
+        return f' Email: {dec} ' if dec else match.group(0)
+    
+    cleaned = re.sub(r'data-cfemail=[\'"]([a-f0-9]+)[\'"]', replace_cf_email, html_str, flags=re.IGNORECASE)
+    cleaned = re.sub(r'/cdn-cgi/l/email-protection#([a-f0-9]+)', lambda m: f'mailto:{decode_cloudflare_email(m.group(1))}', cleaned, flags=re.IGNORECASE)
 
-    # Decode data-email and data-mailto attributes on icons/buttons
-    clean = re.sub(r'data-(?:email|mailto)=[\'"]([^\'"]+@[\w\.-]+\.\w+)[\'"]', r' Email: \1 ', clean, flags=re.IGNORECASE)
+    # 2. Decode TerminalFour / CMS Caesar shift emails (class="emailob" or data-tel="..." or data-phone="...")
+    def replace_emailob_match(match):
+        attrs = match.group(1)
+        body = match.group(2)
+        m_tel = re.search(r'data-(?:tel|phone)=[\'"]([^\'"]+)[\'"]', attrs, re.IGNORECASE)
+        tel_val = m_tel.group(1) if m_tel else ""
+        dec = decode_caesar_shifted_email(body, tel_val, domain_hint)
+        if "@" in dec:
+            return f'<a href="mailto:{dec}"> Email: {dec} </a>'
+        return match.group(0)
 
-    # Decode JavaScript substitution cipher emails (used by UNG and CMS directory platforms)
+    cleaned = re.sub(
+        r'<a([^>]*?(?:class=[\'"][^\'"]*emailob[^\'"]*[\'"]|data-(?:tel|phone)=[\'"][^\'"]+[\'"])[^>]*)>(.*?)</a>',
+        replace_emailob_match,
+        cleaned,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # 3. Decode data-email and data-mailto attributes on buttons/spans/icons
+    cleaned = re.sub(r'data-(?:email|mailto)=[\'"]([^\'"]+@[\w\.-]+\.\w+)[\'"]', r' Email: \1 ', cleaned, flags=re.IGNORECASE)
+
+    # 4. Decode JavaScript substitution cipher emails (used by UNG and CMS directory platforms)
     def decode_js_cipher_email(match):
         coded = match.group(1)
         key = match.group(2)
@@ -56,12 +125,26 @@ def sanitize_raw_html(html: str) -> str:
             return f" Email: {link} "
         return ""
 
-    clean = re.sub(
+    cleaned = re.sub(
         r'<script(?:(?!<script).)*?coded\s*=\s*"([^"]+)"\s*key\s*=\s*"([^"]+)".*?</script>',
         decode_js_cipher_email,
-        clean,
+        cleaned,
         flags=re.DOTALL | re.IGNORECASE
     )
+
+    # 5. Decode obfuscated data-name and data-domain email attributes
+    cleaned = re.sub(r'<a[^>]*data-name=[\'"]([^\'"]+)[\'"][^>]*data-domain=[\'"]([^\'"]+)[\'"][^>]*>.*?</a>', r' Email: \1@\2 ', cleaned, flags=re.IGNORECASE | re.DOTALL)
+
+    # 6. Decode text obfuscations like user [at] domain [dot] edu
+    cleaned = re.sub(r'([a-zA-Z0-9._%+-]+)\s*\[at\]\s*([a-zA-Z0-9.-]+)\s*\[dot\]\s*([a-zA-Z]{2,})', r' Email: \1@\2.\3 ', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'([a-zA-Z0-9._%+-]+)\s*\(at\)\s*([a-zA-Z0-9.-]+)\s*\(dot\)\s*([a-zA-Z]{2,})', r' Email: \1@\2.\3 ', cleaned, flags=re.IGNORECASE)
+
+    return cleaned
+
+# Cleans raw HTML text into readable lines preserving emails and phone links
+def sanitize_raw_html(html_str: str, domain_hint: str = "") -> str:
+    # First, run comprehensive DOM and text deobfuscation
+    clean = deobfuscate_emails_in_html(html_str, domain_hint)
 
     # Strip remaining script blocks
     clean = re.sub(r'<script.*?</script>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
@@ -71,10 +154,12 @@ def sanitize_raw_html(html: str) -> str:
     clean = re.sub(r'<svg.*?</svg>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
     # Strip HTML comments
     clean = re.sub(r'<!--.*?-->', ' ', clean, flags=re.DOTALL)
-    # Decode obfuscated data-name and data-domain email attributes
-    clean = re.sub(r'<a[^>]*data-name=[\'"]([^\'"]+)[\'"][^>]*data-domain=[\'"]([^\'"]+)[\'"][^>]*>.*?</a>', r' Email: \1@\2 ', clean, flags=re.IGNORECASE | re.DOTALL)
-    # Preserve mailto links as explicit text
-    clean = re.sub(r'<a[^>]+href=[\'"]mailto:([^\'"]+)[\'"][^>]*>.*?</a>', r' Email: \1 ', clean, flags=re.IGNORECASE)
+    # Preserve mailto links as explicit text (including percent-encoded or unescaped mailto links)
+    def replace_mailto(match):
+        raw_target = match.group(1).split("?")[0].strip()
+        unescaped = html.unescape(urllib.parse.unquote(raw_target))
+        return f" Email: {unescaped} "
+    clean = re.sub(r'<a[^>]+href=[\'"]mailto:([^\'"]+)[\'"][^>]*>.*?</a>', replace_mailto, clean, flags=re.IGNORECASE)
     # Preserve tel links as explicit text
     clean = re.sub(r'<a[^>]+href=[\'"]tel:([^\'"]+)[\'"][^>]*>.*?</a>', r' Phone: \1 ', clean, flags=re.IGNORECASE)
     # Convert block line breaks and headings into newlines
@@ -706,7 +791,7 @@ def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 40) -> 
         try:
             r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=8, verify=False)
             if r.status_code == 200:
-                txt = sanitize_raw_html(r.text)
+                txt = sanitize_raw_html(r.text, base_domain)
                 return (p_url, p_name, txt)
         except Exception:
             pass
@@ -748,7 +833,7 @@ def fetch_node(state: ScraperState) -> ScraperState:
                 processed_html = top_contact + "\n<table>\n" + header_tr + "\n" + "\n".join(target_trs) + "\n</table>"
 
             # Sanitize HTML into clean readable text
-            clean_text = sanitize_raw_html(processed_html)
+            clean_text = sanitize_raw_html(processed_html, domain)
 
             # Crawl individual faculty profile bio pages if direct dynamic feeds were not already loaded
             has_dynamic_feed = any(m in raw_html for m in ["LOADED VANDERBILT", "LOADED CHATTAHOOCHEE", "LOADED ESSENTIALBLOCKS", "LOADED WGTC", "LOADED OGEECHEE", "LOADED DYNAMIC JSON FEED"])
