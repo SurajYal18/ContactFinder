@@ -10,10 +10,7 @@ An automated higher education directory scraper, directory resolver, and contact
 - [Project Architecture](#project-architecture)
 - [Environment Variables](#environment-variables)
 - [Local Development Setup](#local-development-setup)
-- [Deployment Guide](#deployment-guide)
-  - [1. Vercel Serverless Deployment (Recommended)](#1-vercel-serverless-deployment-recommended)
-  - [2. Docker Deployment](#2-docker-deployment)
-  - [3. Linux VPS / AWS EC2 Deployment](#3-linux-vps--aws-ec2-deployment)
+- [Deployment to Vercel](#deployment-to-vercel)
 - [Security & Authentication](#security--authentication)
 - [Troubleshooting & FAQs](#troubleshooting--faqs)
 
@@ -66,13 +63,13 @@ An automated higher education directory scraper, directory resolver, and contact
 
 ## Environment Variables
 
-Configure the following variables in your `.env` file (for local/server execution) or in the **Environment Variables** settings of your cloud hosting provider:
+Configure the following variables in your `.env` file (for local testing) or in the **Environment Variables** settings in your Vercel project:
 
 | Variable | Required | Description | Example |
 | :--- | :---: | :--- | :--- |
 | `GEMINI_API_KEY` | **Yes** | Google Gemini API key used for structured extraction | `AIzaSy...` |
-| `AUTH_USERNAME` | **Yes** | Username required to access the dashboard | `admin` |
-| `AUTH_PASSWORD` | **Yes** | Secure password required to access the dashboard | `StrongPassword123!` |
+| `AUTH_USERNAME` | **Yes** | Username required to log into the dashboard | `admin` |
+| `AUTH_PASSWORD` | **Yes** | Secure password required to log into the dashboard | `StrongPassword123!` |
 | `AUTH_SECRET_KEY` | Recommended | Random secret string used to sign SHA-256 session tokens | `64_char_hex_random_key` |
 | `HUNTER_API_KEY` | Optional | Hunter.io API key for email lookup and verification | `f4a8b...` |
 | `ENABLE_HUNTER` | Optional | Enable or disable Hunter.io enrichment (`true` or `false`) | `true` |
@@ -89,203 +86,68 @@ Configure the following variables in your `.env` file (for local/server executio
 
 ## Local Development Setup
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/Mobiuso/ContactCollectorAndEnricher.git
-cd ContactCollectorAndEnricher
-```
+1. **Clone repository:**
+   ```bash
+   git clone https://github.com/Mobiuso/ContactCollectorAndEnricher.git
+   cd ContactCollectorAndEnricher
+   ```
 
-### 2. Set Up a Virtual Environment
-```bash
-# Windows
-python -m venv venv
-.\venv\Scripts\activate
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# macOS / Linux
-python3 -m venv venv
-source venv/bin/activate
-```
+3. **Configure environment:**
+   Create a `.env` file in the `backend/` directory:
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment
-Copy the example environment template and fill in your keys:
-```bash
-cp backend/.env.example backend/.env
-```
-
-### 5. Launch the Application
-```bash
-python backend/server.py
-```
-Open your browser at `http://127.0.0.1:8000` to access the dashboard.
+4. **Run the local server:**
+   ```bash
+   python backend/server.py
+   ```
+   Open your browser at `http://127.0.0.1:8000`.
 
 ---
 
-## Deployment Guide
+## Deployment to Vercel
 
-### 1. Vercel Serverless Deployment (Recommended)
+The application is fully pre-configured for **Vercel** using [`vercel.json`](file:///d:/Scrapping/vercel.json), which orchestrates two integrated services:
+- **Frontend Service**: Statically serves the HTML dashboards (`/`, `/directory`, `/login`).
+- **Backend Service**: Routes all `/api/(.*)` requests directly to the FastAPI serverless backend (`api/index.py` and `backend/server.py`).
 
-The repository includes a ready-to-use [`vercel.json`](file:///d:/Scrapping/vercel.json) that configures two integrated services:
-- **Frontend**: Serves static HTML pages (`/`, `/directory`, `/login`).
-- **Backend**: Routes `/api/*` to the FastAPI application.
+### Step-by-Step Deployment:
 
-#### Step-by-Step Vercel Setup:
+1. **Push Changes to GitHub**:
+   Ensure your latest code is pushed to your GitHub repository (`main` branch).
 
-1. **Push your code to GitHub**:
-   Ensure your changes are committed and pushed to your GitHub repository.
-
-2. **Import into Vercel**:
-   - Log into your [Vercel Dashboard](https://vercel.com).
+2. **Import Repository into Vercel**:
+   - Go to your [Vercel Dashboard](https://vercel.com).
    - Click **Add New...** > **Project**.
    - Select your repository and click **Import**.
 
-3. **Configure Project Settings**:
+3. **Configure Build Settings**:
    - **Framework Preset**: Leave as **Other** (Vercel automatically detects `vercel.json`).
    - **Root Directory**: `./` (default).
 
 4. **Add Environment Variables**:
-   Under **Settings** > **Environment Variables**, add:
+   Under **Settings** > **Environment Variables** in Vercel, add:
    - `GEMINI_API_KEY`
    - `AUTH_USERNAME`
    - `AUTH_PASSWORD`
    - `AUTH_SECRET_KEY`
    - `HUNTER_API_KEY` (if using Hunter.io)
-   - `ENABLE_HUNTER` (set to `true` or `false`)
+   - `ENABLE_HUNTER` (`true` or `false`)
    - `ROCKETREACH_API_KEY` (if using RocketReach)
-   - `ENABLE_ROCKETREACH` (set to `true` or `false`)
+   - `ENABLE_ROCKETREACH` (`true` or `false`)
 
 5. **Deploy**:
-   - Click **Deploy**. Vercel will build the frontend and backend serverless endpoints.
-   - Once deployed, visit `https://your-project.vercel.app` and sign in with your credentials.
+   - Click **Deploy**. Vercel will build both the frontend and backend serverless endpoints automatically.
+   - Once deployment finishes, open your production URL (e.g. `https://your-project.vercel.app`) and sign in using your configured `AUTH_USERNAME` and `AUTH_PASSWORD`.
 
 > [!NOTE]
-> Serverless function execution times on Vercel's free tier are limited to 15 seconds (up to 300s on Pro plans). For long-running batch extraction jobs with extensive pagination, a persistent VPS or Docker deployment is recommended.
-
----
-
-### 2. Docker Deployment
-
-To deploy anywhere using Docker (Render, Railway, Fly.io, or AWS ECS):
-
-#### Create a `Dockerfile`:
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application files
-COPY . .
-
-# Expose server port
-EXPOSE 8000
-
-# Set environment
-ENV PYTHONUNBUFFERED=1
-
-# Launch FastAPI via Uvicorn
-CMD ["uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-#### Build and Run:
-```bash
-# Build image
-docker build -t contact-collector .
-
-# Run container with environment file
-docker run -d --name contact-collector \
-  -p 8000:8000 \
-  --env-file backend/.env \
-  contact-collector
-```
-
----
-
-### 3. Linux VPS / AWS EC2 Deployment
-
-For a dedicated persistent Linux server (Ubuntu 22.04+):
-
-#### Step 1: System Preparation
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3-pip python3-venv git nginx
-```
-
-#### Step 2: Clone and Install
-```bash
-cd /opt
-sudo git clone https://github.com/Mobiuso/ContactCollectorAndEnricher.git
-cd ContactCollectorAndEnricher
-sudo chown -R $USER:$USER /opt/ContactCollectorAndEnricher
-
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp backend/.env.example backend/.env
-nano backend/.env  # Enter your API keys and credentials
-```
-
-#### Step 3: Create a Systemd Service
-Create `/etc/systemd/system/contact-collector.service`:
-```ini
-[Unit]
-Description=Contact Collector and Enricher FastAPI Server
-After=network.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/opt/ContactCollectorAndEnricher
-EnvironmentFile=/opt/ContactCollectorAndEnricher/backend/.env
-ExecStart=/opt/ContactCollectorAndEnricher/venv/bin/uvicorn backend.server:app --host 127.0.0.1 --port 8000 --workers 2
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start the service:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable contact-collector
-sudo systemctl start contact-collector
-```
-
-#### Step 4: Configure Nginx Reverse Proxy
-Create `/etc/nginx/sites-available/contact-collector`:
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
-    }
-}
-```
-Enable the site and enable SSL via Let's Encrypt:
-```bash
-sudo ln -s /etc/nginx/sites-available/contact-collector /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d yourdomain.com
-```
+> Serverless function execution times on Vercel's free tier are limited to 15 seconds (up to 300s on Pro plans). For long-running batch extraction jobs with extensive pagination, consider increasing the function duration in project settings or running on a Pro plan.
 
 ---
 
@@ -304,13 +166,13 @@ sudo certbot --nginx -d yourdomain.com
 ## Troubleshooting & FAQs
 
 ### Q: Why do I get a 401 Unauthorized error?
-Ensure `AUTH_USERNAME` and `AUTH_PASSWORD` are configured in your `.env` or Vercel environment variables. If you change credentials, log out from `/login` and sign back in to refresh your authentication cookie.
+Ensure `AUTH_USERNAME` and `AUTH_PASSWORD` are configured in your Vercel Project Settings > Environment Variables. If you update credentials, log out from `/login` and sign back in to refresh your authentication cookie.
 
 ### Q: How does the tool handle protected or encoded emails?
-The scraper includes an automated deobfuscation node that unpacks:
-1. TerminalFour / Caesar shifted strings (e.g. `badkk0?tl`rrc-dct` $\rightarrow$ `cbell1@umassd.edu`)
+The scraper includes an automated deobfuscation engine that unpacks:
+1. TerminalFour / Caesar shifted strings (e.g., `badkk0?tl`rrc-dct` $\rightarrow$ `cbell1@umassd.edu`)
 2. Cloudflare XOR encrypted addresses
 3. URL percent-encoded and HTML character entities
 
 ### Q: Why did a scrape time out on Vercel?
-Vercel Serverless functions have execution timeout limits (15 seconds on Hobby, up to 300 seconds on Pro). If you are scraping a directory with dozens of paginated sub-pages, either upgrade function timeout in `vercel.json` or deploy to a VPS / Docker environment.
+Vercel Serverless functions have execution timeout limits (15 seconds on Hobby, up to 300 seconds on Pro). If you are scraping a directory with dozens of paginated sub-pages, you can increase the function timeout in Vercel Project Settings > Functions.
