@@ -15,6 +15,7 @@ ENV/
 backend/exports/
 exports/
 *.xlsx
+*.csv
 
 # Vercel build output
 .vercel/

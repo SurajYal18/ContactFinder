@@ -29,7 +29,18 @@ def auto_decode_shifted_email(raw_email: str, phone: str = "", domain_hint: str 
     
     raw = re.sub(r'\s*\[at\]\s*|\s*\(at\)\s*|\s+AT\s+', '@', raw, flags=re.IGNORECASE)
     raw = re.sub(r'\s*\[dot\]\s*|\s*\(dot\)\s*|\s+DOT\s+', '.', raw, flags=re.IGNORECASE)
-    
+
+    # Detect hex-encoded UTF-16 / UTF-8 strings (e.g., University of Miami: '006100780061...')
+    clean_hex = re.sub(r'[\s-]', '', raw)
+    if len(clean_hex) >= 16 and len(clean_hex) % 2 == 0 and re.match(r'^[0-9a-fA-F]+$', clean_hex):
+        try:
+            hb = bytes.fromhex(clean_hex).replace(b'\x00', b'')
+            dec_hex = hb.decode('utf-8', errors='ignore').strip()
+            if '@' in dec_hex and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', dec_hex):
+                return dec_hex
+        except Exception:
+            pass
+
     if "@" in raw and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', raw):
         if domain_hint:
             raw = raw.replace("example.edu", domain_hint)
@@ -157,10 +168,15 @@ def extract_node(state: ScraperState) -> ScraperState:
     # 2. Campus: keep blank if campus not available; do NOT use university name!
     for c in contacts:
         sch = str(c.get("school") or "").strip()
-        if not sch or sch.lower() in ["none", "null", "n/a", "undefined", "-"]:
-            c["school"] = university or ""
+        sch_clean = re.sub(r'^(?:faculty\s*directory|faculty(?:\s*(?:&|and)\s*staff)?|people|directory)\s*[-|–—»›/:\\]+\s*', '', sch, flags=re.I).strip()
+        sch_clean = re.sub(r'\s*(?:[-|–—»›/:\\]|&raquo;|&rsaquo;)\s*', ' ', sch_clean).strip()
+        is_subdept = any(re.match(r'^(?:college|school|department|division)\s+of\s+.*', s, re.I) for s in [sch, sch_clean]) or sch_clean.lower() in ["college of nursing", "school of nursing", "department of nursing"]
+        if not sch or sch.lower() in ["none", "null", "n/a", "undefined", "-"] or (university and is_subdept):
+            c["school"] = university or sch_clean
+        elif university and (sch.lower() == f"ucf {university.lower()}" or "nicole wertheim" in sch.lower() or "faculty directory" in sch.lower() or "marieb" in sch.lower()):
+            c["school"] = university
         else:
-            c["school"] = sch
+            c["school"] = sch_clean if sch_clean else (university or sch)
 
         camp = str(c.get("campus") or "").strip()
         camp_lower = camp.lower()

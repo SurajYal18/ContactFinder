@@ -780,7 +780,44 @@ def get_university_name(domain: str, html: str = "") -> str:
         "chamberlain.edu": "Chamberlain University",
         "herzing.edu": "Herzing University",
         "jhu.edu": "Johns Hopkins University",
-        "umich.edu": "University of Michigan"
+        "umich.edu": "University of Michigan",
+        # Florida Institutions
+        "ufl.edu": "University of Florida",
+        "fsu.edu": "Florida State University",
+        "ucf.edu": "University of Central Florida",
+        "usf.edu": "University of South Florida",
+        "fiu.edu": "Florida International University",
+        "miami.edu": "University of Miami",
+        "unf.edu": "University of North Florida",
+        "uwf.edu": "University of West Florida",
+        "ut.edu": "The University of Tampa",
+        "stu.edu": "St. Thomas University",
+        "phsc.edu": "Pasco-Hernando State College",
+        "fgcu.edu": "Florida Gulf Coast University",
+        "fgc.edu": "Florida Gateway College",
+        "flsouthern.edu": "Florida Southern College",
+        "gulfcoast.edu": "Gulf Coast State College",
+        "ju.edu": "Jacksonville University",
+        "mdc.edu": "Miami Dade College",
+        "nova.edu": "Nova Southeastern University",
+        "pba.edu": "Palm Beach Atlantic University",
+        "pcci.edu": "Pensacola Christian College",
+        "pensacolastate.edu": "Pensacola State College",
+        "saintleo.edu": "Saint Leo University",
+        "sfcollege.edu": "Santa Fe College",
+        "seu.edu": "Southeastern University",
+        "spcollege.edu": "St. Petersburg College",
+        "valenciacollege.edu": "Valencia College",
+        "webber.edu": "Webber International University",
+        "keiseruniversity.edu": "Keiser University",
+        "keiser.edu": "Keiser University",
+        "ahu.edu": "AdventHealth University",
+        "barry.edu": "Barry University",
+        "broward.edu": "Broward College",
+        "easternflorida.edu": "Eastern Florida State College",
+        "fnu.edu": "Florida National University",
+        "floridacollege.edu": "Florida College",
+        "fau.edu": "Florida Atlantic University"
     }
     clean_domain = domain.replace("www.", "").lower()
     for k, v in known_unis.items():
@@ -791,11 +828,29 @@ def get_university_name(domain: str, html: str = "") -> str:
     if html:
         m = re.search(r'<title[^>]*>(.*?)</title>', html, flags=re.I | re.DOTALL)
         if m:
-            title_text = re.sub(r'\s+', ' ', m.group(1)).strip()
-            parts = [p.strip() for p in re.split(r'[-|–—•]', title_text) if p.strip()]
+            title_text = html.unescape(re.sub(r'\s+', ' ', m.group(1))).strip()
+            # Split on standard title delimiters: -, |, –, —, •, », ›, :, /
+            parts = [p.strip() for p in re.split(r'\s*(?:[-|–—•»›/:\\]|&raquo;|&rsaquo;)\s*', title_text) if p.strip()]
+            
+            # Words that indicate a sub-unit, directory page, or generic section (NOT parent institution name)
+            sub_dept_pattern = re.compile(
+                r'^(?:faculty\s*directory|faculty(?:\s*(?:&|and)\s*staff)?|staff|people|directory|bio|profiles?|'
+                r'(?:college|school|department|division|program|office)\s+of\s+.*|'
+                r'.*\b(?:department|division|program)\b)$',
+                re.I
+            )
+            valid_candidates = []
             for p in reversed(parts):
-                if any(w in p.lower() for w in ["university", "college", "institute"]):
-                    return p
+                p_lower = p.lower()
+                if sub_dept_pattern.match(p_lower):
+                    continue
+                if p_lower in ["college of nursing", "school of nursing", "department of nursing", "home", "about us", "contact"]:
+                    continue
+                if any(w in p_lower for w in ["university", "college", "institute", "polytechnic", "academy", "seminary"]):
+                    cleaned_p = re.sub(r'^(?:welcome to|about)\s+', '', p, flags=re.I).strip()
+                    valid_candidates.append(cleaned_p)
+            if valid_candidates:
+                return valid_candidates[0]
 
     # Fallback to domain core title
     core = clean_domain.split('.')[0]
@@ -860,7 +915,7 @@ def is_faculty_profile_link(full_url: str, text: str, base_domain: str, parent_c
     return False
 
 # Crawls candidate individual faculty profile sub-pages concurrently to extract email, phone, and credentials
-def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 40) -> str:
+def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 120) -> str:
     soup = BeautifulSoup(html, "html.parser")
     base_domain = urlparse(main_url).netloc.lower()
     seen_urls = set()
@@ -885,12 +940,22 @@ def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 40) -> 
         try:
             r = requests.get(p_url, headers=BROWSER_HEADERS, timeout=8, verify=False)
             if r.status_code == 200:
-                txt = sanitize_raw_html(r.text, base_domain)
-                return (p_url, p_name, txt)
+                p_soup = BeautifulSoup(r.text, "html.parser")
+                core = p_soup.find(["main", "article"]) or p_soup.find("div", id=re.compile(r"content|main", re.I)) or p_soup.find("div", class_=re.compile(r"profile|bio|faculty|content", re.I))
+                target_html = str(core) if core else r.text
+                txt = sanitize_raw_html(target_html, base_domain)
+                
+                # Check for direct email / phone in raw profile HTML to ensure it is never cut off
+                m_em = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r.text)
+                m_ph = re.search(r'(\(\d{3}\)\s*\d{3}[-\s]\d{4}|\d{3}[-.]\d{3}[-.]\d{4})', r.text)
+                extracted_contact = ""
+                if m_em or m_ph:
+                    extracted_contact = f"Direct Contact: Email={m_em.group(0) if m_em else ''} Phone={m_ph.group(0) if m_ph else ''}\n"
+                return (p_url, p_name, extracted_contact + txt[:4000])
         except Exception:
             pass
         return None
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(fetch_one, link) for link in candidate_links]
         for f in as_completed(futures):
             res = f.result()
@@ -898,7 +963,7 @@ def crawl_faculty_profiles(main_url: str, html: str, max_profiles: int = 40) -> 
                 results.append(res)
     profile_sections = []
     for p_url, p_name, p_text in results:
-        profile_sections.append(f"=== FACULTY PROFILE: {p_name} ({p_url}) ===\n{p_text[:2000]}")
+        profile_sections.append(f"=== FACULTY PROFILE: {p_name} ({p_url}) ===\n{p_text}")
     return "\n\n".join(profile_sections)
 
 # LangGraph node function for fetching and sanitizing target directory URL
@@ -932,7 +997,8 @@ def fetch_node(state: ScraperState) -> ScraperState:
             # Crawl individual faculty profile bio pages if direct dynamic feeds were not already loaded
             has_dynamic_feed = any(m in raw_html for m in ["LOADED VANDERBILT", "LOADED CHATTAHOOCHEE", "LOADED ESSENTIALBLOCKS", "LOADED WGTC", "LOADED OGEECHEE", "LOADED DYNAMIC JSON FEED"])
             if not has_dynamic_feed:
-                profiles_text = crawl_faculty_profiles(url, raw_html)
+                html_for_profiles = processed_html if processed_html != raw_html else raw_html
+                profiles_text = crawl_faculty_profiles(url, html_for_profiles, max_profiles=120)
                 if profiles_text:
                     clean_text += "\n\n=== INDIVIDUAL FACULTY PROFILE BIO PAGES ===\n\n" + profiles_text
 
