@@ -1,6 +1,7 @@
 import io
 import re
-import html
+import html as html_lib
+from html import unescape
 import urllib.parse
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -35,7 +36,7 @@ def decode_caesar_shifted_email(raw_str: str, key: str = "", domain_hint: str = 
     if not raw_str:
         return ""
     # Unescape HTML entities (e.g. &gt;, &lt;, &commat;, &#64;, etc.)
-    raw = html.unescape(str(raw_str)).strip()
+    raw = unescape(str(raw_str)).strip()
     
     # Check if already a valid email
     if "@" in raw and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', raw):
@@ -157,7 +158,7 @@ def sanitize_raw_html(html_str: str, domain_hint: str = "") -> str:
     # Preserve mailto links as explicit text (including percent-encoded or unescaped mailto links)
     def replace_mailto(match):
         raw_target = match.group(1).split("?")[0].strip()
-        unescaped = html.unescape(urllib.parse.unquote(raw_target))
+        unescaped = unescape(urllib.parse.unquote(raw_target))
         return f" Email: {unescaped} "
     clean = re.sub(r'<a[^>]+href=[\'"]mailto:([^\'"]+)[\'"][^>]*>.*?</a>', replace_mailto, clean, flags=re.IGNORECASE)
     # Preserve tel links as explicit text
@@ -449,7 +450,15 @@ def fetch_page_content(url: str) -> str:
         res = requests.get(clean_url, headers=BROWSER_HEADERS, timeout=20, verify=False)
 
     if res.status_code == 403 or "challenges.cloudflare.com" in res.text or "Just a moment..." in res.text:
-        raise RuntimeError("Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden).")
+        try:
+            from curl_cffi import requests as cffi_requests
+            cffi_res = cffi_requests.get(clean_url, impersonate="chrome120", timeout=20, verify=False)
+            if cffi_res.status_code == 200 and "challenges.cloudflare.com" not in cffi_res.text and "Just a moment..." not in cffi_res.text:
+                res = cffi_res
+            else:
+                raise RuntimeError("Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden).")
+        except Exception:
+            raise RuntimeError("Access blocked: This website is protected by Cloudflare bot protection (HTTP 403 Forbidden).")
     res.raise_for_status()
 
     # Check if document is a PDF
@@ -488,6 +497,33 @@ def fetch_page_content(url: str) -> str:
     p_urls = discover_pagination_urls(clean_url, html, max_pages=20)
     if p_urls:
         html = crawl_pagination_pages(clean_url, html, p_urls)
+
+    # Generic embedded CMS JSON directory extractor (e.g. Barry University and headless CMS sites)
+    if ('"mustache":' in html or '"heading":' in html) and "mailto:" in html:
+        try:
+            cms_pattern = re.compile(
+                r'"title":\s*"([^"]+)",\s*"mustache":\s*"([^"]*)".*?mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+                re.DOTALL
+            )
+            cms_cards = []
+            cms_seen = set()
+            for m in cms_pattern.finditer(html):
+                c_name = unescape(m.group(1).strip()).replace('\u2028', ' ')
+                c_title = unescape(m.group(2).strip()).replace('\u2028', ' ')
+                c_email = m.group(3).strip()
+                if c_email.lower() not in cms_seen:
+                    cms_seen.add(c_email.lower())
+                    cms_cards.append(f'''
+                    <div class="faculty-card">
+                        <h3>{c_name}</h3>
+                        <p>Title: {c_title}</p>
+                        <p>Email: <a href="mailto:{c_email}">{c_email}</a></p>
+                    </div>
+                    ''')
+            if cms_cards:
+                html += "\n\n<!-- LOADED EMBEDDED CMS FACULTY JSON CARDS -->\n" + "\n".join(cms_cards)
+        except Exception:
+            pass
 
     # 1. Vanderbilt University PeopleManager AJAX directory
     if "vanderbilt.edu" in clean_url.lower() or "js-people-directory" in html or "peoplemanager-directory" in html:
@@ -828,7 +864,7 @@ def get_university_name(domain: str, html: str = "") -> str:
     if html:
         m = re.search(r'<title[^>]*>(.*?)</title>', html, flags=re.I | re.DOTALL)
         if m:
-            title_text = html.unescape(re.sub(r'\s+', ' ', m.group(1))).strip()
+            title_text = unescape(re.sub(r'\s+', ' ', m.group(1))).strip()
             # Split on standard title delimiters: -, |, –, —, •, », ›, :, /
             parts = [p.strip() for p in re.split(r'\s*(?:[-|–—•»›/:\\]|&raquo;|&rsaquo;)\s*', title_text) if p.strip()]
             
