@@ -170,29 +170,41 @@ def sanitize_raw_html(html_str: str, domain_hint: str = "") -> str:
     lines = [re.sub(r'[ \t]+', ' ', line).strip() for line in clean.split('\n')]
     return '\n'.join([l for l in lines if l])
 
-# Automatically submits department filter forms when department selection does not change the URL (e.g. Southern Crescent Tech)
-def auto_submit_department_form(url: str, html: str) -> str:
+# Automatically submits department filter forms and handles ASP.NET WebForms postbacks & pagination generically
+def auto_submit_department_form(url: str, html: str, max_pages: int = 20) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for form in soup.find_all("form"):
         selects = form.find_all("select")
         dept_select = None
         target_option_val = None
 
+        # Prioritize exact "nursing", then word containing "nurs", then general allied health / health sciences
+        candidates = []
         for sel in selects:
+            sel_name = sel.get("name") or sel.get("id")
             for opt in sel.find_all("option"):
                 opt_txt = opt.get_text(" ", strip=True).lower()
                 val = opt.get("value", "")
-                if re.search(r'\b(?:nurs|allied health|health sci)', opt_txt) and val:
-                    dept_select = sel.get("name")
-                    target_option_val = val
-                    break
-            if dept_select:
-                break
+                if not val or val.lower() in ["0", "-1", "all", "none", ""]:
+                    continue
+                if opt_txt == "nursing":
+                    candidates.append((1, sel_name, val))
+                elif re.search(r'\bnursing\b', opt_txt):
+                    candidates.append((2, sel_name, val))
+                elif re.search(r'\bnurs\w*', opt_txt):
+                    candidates.append((3, sel_name, val))
+                elif re.search(r'\b(?:allied health|health sci|health prof)', opt_txt):
+                    candidates.append((4, sel_name, val))
+
+        if candidates:
+            candidates.sort(key=lambda x: x[0])
+            dept_select = candidates[0][1]
+            target_option_val = candidates[0][2]
 
         if dept_select and target_option_val:
             payload = {}
             for inp in form.find_all(["input", "select"]):
-                name = inp.get("name")
+                name = inp.get("name") or inp.get("id")
                 if not name:
                     continue
                 if name == dept_select:
@@ -200,18 +212,100 @@ def auto_submit_department_form(url: str, html: str) -> str:
                 elif inp.name == "input":
                     val = inp.get("value", "")
                     inp_type = (inp.get("type") or "text").lower()
-                    if inp_type in ["hidden", "text", "submit"]:
+                    if inp_type in ["hidden", "text"]:
                         payload[name] = val
+                elif inp.name == "select":
+                    sel_opt = inp.find("option", selected=True) or inp.find("option")
+                    payload[name] = sel_opt.get("value", "") if sel_opt else ""
+
+            is_aspnet = "__VIEWSTATE" in payload or soup.find("input", {"id": "__VIEWSTATE"}) is not None
+            if is_aspnet:
+                payload["__EVENTTARGET"] = dept_select
+                payload["__EVENTARGUMENT"] = ""
+                payload["__LASTFOCUS"] = ""
 
             action = form.get("action") or url
             post_url = urljoin(url, action)
             method = (form.get("method") or "POST").upper()
+            session = requests.Session()
+
             try:
                 if method == "POST":
-                    resp = requests.post(post_url, headers=BROWSER_HEADERS, data=payload, timeout=15, verify=False)
+                    resp = session.post(post_url, headers=BROWSER_HEADERS, data=payload, timeout=20, verify=False)
                 else:
-                    resp = requests.get(post_url, headers=BROWSER_HEADERS, params=payload, timeout=15, verify=False)
+                    resp = session.get(post_url, headers=BROWSER_HEADERS, params=payload, timeout=20, verify=False)
+
                 if resp.status_code == 200 and len(resp.text) > len(html) * 0.4:
+                    page_html = resp.text
+
+                    # Generic ASP.NET WebForms postback pagination (e.g. Next LinkButton with __doPostBack)
+                    if is_aspnet:
+                        accumulated_pages = [page_html]
+                        curr_soup = BeautifulSoup(page_html, "html.parser")
+                        current_page = 1
+
+                        while current_page < max_pages:
+                            # Search generically for Next page postback controls
+                            next_control = None
+                            for el in curr_soup.find_all(["a", "input"]):
+                                el_id = (el.get("id") or "").lower()
+                                el_name = (el.get("name") or "").lower()
+                                el_href = (el.get("href") or "").lower()
+                                el_txt = el.get_text(" ", strip=True).lower()
+
+                                is_next = (
+                                    "next" in el_id or "next" in el_name or 
+                                    "next" in el_txt or el_txt in [">", "»", "next >", "next >>"]
+                                )
+                                if is_next:
+                                    if el.name == "a" and "__dopostback" in el_href:
+                                        next_control = el
+                                        break
+                                    elif el.name == "input" and el.get("type", "").lower() in ["submit", "button"]:
+                                        next_control = el
+                                        break
+
+                            if not next_control:
+                                break
+
+                            # Extract target and argument from __doPostBack('TARGET', 'ARG')
+                            m_postback = re.search(r"__doPostBack\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]*)['\"]\s*\)", next_control.get("href", ""), re.IGNORECASE)
+                            if m_postback:
+                                target_name = m_postback.group(1)
+                                target_arg = m_postback.group(2)
+                            else:
+                                target_name = next_control.get("name") or next_control.get("id") or ""
+                                target_arg = ""
+
+                            if not target_name:
+                                break
+
+                            vs_elem = curr_soup.find("input", {"id": "__VIEWSTATE"})
+                            ev_elem = curr_soup.find("input", {"id": "__EVENTVALIDATION"})
+                            vsg_elem = curr_soup.find("input", {"id": "__VIEWSTATEGENERATOR"})
+
+                            if not vs_elem or not vs_elem.get("value"):
+                                break
+
+                            payload["__VIEWSTATE"] = vs_elem.get("value", "")
+                            if ev_elem:
+                                payload["__EVENTVALIDATION"] = ev_elem.get("value", "")
+                            if vsg_elem:
+                                payload["__VIEWSTATEGENERATOR"] = vsg_elem.get("value", "")
+                            payload["__EVENTTARGET"] = target_name
+                            payload["__EVENTARGUMENT"] = target_arg
+
+                            current_page += 1
+                            r_next = session.post(post_url, headers=BROWSER_HEADERS, data=payload, timeout=20, verify=False)
+                            if r_next.status_code != 200 or len(r_next.text) < 500:
+                                break
+
+                            accumulated_pages.append(r_next.text)
+                            curr_soup = BeautifulSoup(r_next.text, "html.parser")
+
+                        if len(accumulated_pages) > 1:
+                            return "\n\n<!-- ACCUMULATED PAGINATION DATA -->\n\n".join(accumulated_pages)
+
                     return resp.text
             except Exception:
                 pass
